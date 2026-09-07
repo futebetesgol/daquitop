@@ -1,13 +1,217 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 const menu = [
   ['⌂','Início'],['▣','Mural'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
 ];
 
+function initials(name = 'U') {
+  return (name || 'U').trim().slice(0, 1).toUpperCase();
+}
+
 export default function Home(){
   const [active,setActive]=useState('Início');
+  const [session,setSession]=useState(null);
+  const [profile,setProfile]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [authMode,setAuthMode]=useState('login');
+  const [authMessage,setAuthMessage]=useState('');
+  const [authBusy,setAuthBusy]=useState(false);
+  const [form,setForm]=useState({email:'',password:'',full_name:'',username:'',state:'CE',city:'Redenção'});
+  const [posts,setPosts]=useState([]);
+  const [people,setPeople]=useState([]);
+  const [businesses,setBusinesses]=useState([]);
+  const [postText,setPostText]=useState('');
+  const [postBusy,setPostBusy]=useState(false);
+
+  const displayName = profile?.full_name || session?.user?.email?.split('@')[0] || 'Usuário';
+  const cityLabel = profile?.city && profile?.state ? `${profile.city} - ${profile.state}` : 'Sua cidade';
+  const avatarLetter = initials(displayName);
+
+  useEffect(()=>{
+    let mounted = true;
+    supabase.auth.getSession().then(({data})=>{
+      if(!mounted) return;
+      setSession(data.session || null);
+      if(!data.session) setLoading(false);
+    });
+
+    const {data:listener}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
+      setSession(nextSession || null);
+      if(!nextSession){
+        setProfile(null);
+        setPosts([]);
+        setPeople([]);
+        setBusinesses([]);
+        setLoading(false);
+      }
+    });
+
+    return ()=>{
+      mounted=false;
+      listener.subscription.unsubscribe();
+    };
+  },[]);
+
+  useEffect(()=>{
+    if(!session?.user?.id) return;
+    loadApp(session.user.id);
+  },[session?.user?.id]);
+
+  async function loadApp(userId){
+    setLoading(true);
+    const {data:ownProfile}=await supabase.from('profiles').select('*').eq('id',userId).maybeSingle();
+    setProfile(ownProfile || null);
+
+    const city = ownProfile?.city;
+    const state = ownProfile?.state;
+
+    let postsQuery = supabase
+      .from('posts')
+      .select('id,content,image_url,video_url,city,state,created_at,author_id,profiles!posts_author_id_fkey(full_name,username,avatar_url)')
+      .order('created_at',{ascending:false})
+      .limit(20);
+    if(city) postsQuery=postsQuery.eq('city',city);
+    if(state) postsQuery=postsQuery.eq('state',state);
+
+    let peopleQuery = supabase
+      .from('profiles')
+      .select('id,full_name,username,followers_count,avatar_url,city,state')
+      .eq('account_type','user')
+      .order('followers_count',{ascending:false})
+      .limit(3);
+    if(city) peopleQuery=peopleQuery.eq('city',city);
+    if(state) peopleQuery=peopleQuery.eq('state',state);
+
+    let businessQuery = supabase
+      .from('businesses')
+      .select('id,name,username,rating_average,reviews_count,logo_url,city,state')
+      .order('rating_average',{ascending:false})
+      .order('reviews_count',{ascending:false})
+      .limit(3);
+    if(city) businessQuery=businessQuery.eq('city',city);
+    if(state) businessQuery=businessQuery.eq('state',state);
+
+    const [{data:postData},{data:peopleData},{data:businessData}] = await Promise.all([
+      postsQuery, peopleQuery, businessQuery
+    ]);
+
+    setPosts(postData || []);
+    setPeople(peopleData || []);
+    setBusinesses(businessData || []);
+    setLoading(false);
+  }
+
+  async function handleAuth(e){
+    e.preventDefault();
+    setAuthBusy(true);
+    setAuthMessage('');
+
+    if(authMode==='login'){
+      const {error}=await supabase.auth.signInWithPassword({email:form.email.trim(),password:form.password});
+      setAuthBusy(false);
+      if(error){setAuthMessage(error.message);return;}
+      setAuthMessage('Login realizado com sucesso.');
+      return;
+    }
+
+    if(!form.full_name.trim() || !form.username.trim() || !form.city.trim() || !form.state.trim()){
+      setAuthBusy(false);
+      setAuthMessage('Preencha nome, @usuário, estado e cidade.');
+      return;
+    }
+
+    const cleanUsername=form.username.trim().replace(/^@/,'').toLowerCase();
+    const {data,error}=await supabase.auth.signUp({
+      email:form.email.trim(),
+      password:form.password,
+      options:{
+        data:{
+          full_name:form.full_name.trim(),
+          username:cleanUsername,
+          state:form.state.trim().toUpperCase(),
+          city:form.city.trim()
+        }
+      }
+    });
+    setAuthBusy(false);
+    if(error){setAuthMessage(error.message);return;}
+    if(data.session){
+      setAuthMessage('Conta criada e login realizado.');
+    }else{
+      setAuthMessage('Conta criada. Confira seu e-mail para confirmar o cadastro e depois faça login.');
+      setAuthMode('login');
+    }
+  }
+
+  async function publishPost(){
+    const content=postText.trim();
+    if(!content || !profile || !session?.user?.id) return;
+    setPostBusy(true);
+    const {error}=await supabase.from('posts').insert({
+      author_id:session.user.id,
+      content,
+      state:profile.state || '',
+      city:profile.city || '',
+      post_type:'user'
+    });
+    setPostBusy(false);
+    if(error){alert(`Não foi possível publicar: ${error.message}`);return;}
+    setPostText('');
+    await loadApp(session.user.id);
+  }
+
+  async function logout(){
+    await supabase.auth.signOut();
+  }
+
+  const heroTitle=useMemo(()=>cityLabel.toUpperCase(),[cityLabel]);
+
+  if(loading && session){
+    return <div className="screenCenter"><div className="loader"></div><p>Carregando DAQUITOP...</p></div>;
+  }
+
+  if(!session){
+    return <main className="authPage">
+      <section className="authShowcase">
+        <div className="brand authBrand"><div className="brandMark">◆</div><div><b>DAQUI<span>TOP</span></b><small>CIDADES QUE CONECTAM</small></div></div>
+        <div className="authHeroText">
+          <span>BEM-VINDO AO</span>
+          <h1>DAQUI<i>TOP</i></h1>
+          <h2>Sua cidade. Sua gente. Seu destaque.</h2>
+          <p>Entre para acompanhar o mural da sua cidade, participar dos rankings locais e descobrir os melhores comércios perto de você.</p>
+        </div>
+      </section>
+
+      <section className="authPanel">
+        <div className="authCard">
+          <div className="authTabs">
+            <button className={authMode==='login'?'active':''} onClick={()=>{setAuthMode('login');setAuthMessage('')}}>ENTRAR</button>
+            <button className={authMode==='signup'?'active':''} onClick={()=>{setAuthMode('signup');setAuthMessage('')}}>CRIAR CONTA</button>
+          </div>
+          <h2>{authMode==='login'?'Bem-vindo de volta':'Faça parte do DAQUITOP'}</h2>
+          <p className="authSubtitle">{authMode==='login'?'Acesse sua cidade e continue de onde parou.':'Crie seu perfil local em poucos passos.'}</p>
+          <form onSubmit={handleAuth}>
+            {authMode==='signup' && <>
+              <label>Nome completo<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="Seu nome"/></label>
+              <label>@Usuário<input required value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="seuusuario"/></label>
+              <div className="authGrid">
+                <label>UF<input required maxLength={2} value={form.state} onChange={e=>setForm({...form,state:e.target.value.toUpperCase()})} placeholder="CE"/></label>
+                <label>Cidade<input required value={form.city} onChange={e=>setForm({...form,city:e.target.value})} placeholder="Redenção"/></label>
+              </div>
+            </>}
+            <label>E-mail<input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="voce@email.com"/></label>
+            <label>Senha<input type="password" minLength={6} required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Mínimo 6 caracteres"/></label>
+            {authMessage && <div className="authMessage">{authMessage}</div>}
+            <button className="authSubmit" disabled={authBusy}>{authBusy?'AGUARDE...':authMode==='login'?'ENTRAR NO DAQUITOP':'CRIAR MINHA CONTA'}</button>
+          </form>
+        </div>
+      </section>
+    </main>;
+  }
+
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><div className="brandMark">◆</div><div><b>DAQUI<span>TOP</span></b><small>CIDADES QUE CONECTAM</small></div></div>
@@ -19,39 +223,43 @@ export default function Home(){
     <section className="mainCol">
       <header className="topbar">
         <div className="search">⌕ <input placeholder="Pesquisar pessoas, comércios, lugares..."/></div>
-        <div className="city">⌖ Redenção - CE⌄</div>
-        <div className="icons">☀︎ ◔ 🔔 💬 <span className="avatar">D</span> <b>DaromDR⌄</b></div>
+        <div className="city">⌖ {cityLabel}</div>
+        <div className="icons">☀︎ ◔ 🔔 💬 <span className="avatar">{avatarLetter}</span> <b>{displayName}</b><button className="logout" onClick={logout}>Sair</button></div>
       </header>
 
       <section className="hero">
         <div className="heroGlow"></div>
         <div className="heroTop">BEM-VINDO AO</div>
         <h1>DAQUI<span>TOP</span></h1>
-        <h2>REDENÇÃO - CE</h2>
+        <h2>{heroTitle}</h2>
         <div className="heroMeta">PESSOAS • COMÉRCIOS • OPORTUNIDADES • UMA CIDADE MAIS UNIDA</div>
         <div className="script">Aqui<br/>tem gente real,<br/>tem história!</div>
       </section>
 
       <section className="composer">
-        <div className="row"><div className="avatar sm">D</div><input placeholder="No que você está pensando, DaromDR?"/></div>
-        <div className="actions"><button>▧ Foto</button><button>▣ Vídeo</button><button>⌖ Marcar local</button><button>☺ Sentimento</button><button className="publish">➤ Publicar</button></div>
+        <div className="row"><div className="avatar sm">{avatarLetter}</div><input value={postText} onChange={e=>setPostText(e.target.value)} placeholder={`No que você está pensando, ${displayName}?`} onKeyDown={e=>{if(e.key==='Enter')publishPost()}}/></div>
+        <div className="actions"><button disabled>▧ Foto</button><button disabled>▣ Vídeo</button><button disabled>⌖ Marcar local</button><button disabled>☺ Sentimento</button><button className="publish" onClick={publishPost} disabled={postBusy || !postText.trim()}>{postBusy?'Publicando...':'➤ Publicar'}</button></div>
       </section>
 
       <div className="tabs"><button className="active">Todas</button><button>Pessoas</button><button>Comércios</button><button>Minha cidade</button></div>
 
-      <article className="post">
-        <div className="postHead"><div className="avatar">M</div><div><b>Mariana Souza ✓</b><small>⌖ Redenção - CE • Há 2 horas</small></div><span>⋮</span></div>
-        <p>Que lugar incrível! ❤️<br/>Nossa cidade tem um pôr do sol que não se compara! 🌅</p>
-        <div className="photo" aria-label="Imagem de exemplo do mural"></div>
-        <div className="stats"><span>❤ 256</span><span>💬 32</span><span>➤ 18</span><span>🔖 Salvar</span></div>
-      </article>
+      {posts.length===0 ? <div className="emptyCard"><b>O mural da sua cidade está começando.</b><span>Seja a primeira pessoa a publicar no DAQUITOP.</span></div> : posts.map(post=>{
+        const author=post.profiles || {};
+        const authorName=author.full_name || author.username || 'Usuário';
+        return <article className="post" key={post.id}>
+          <div className="postHead"><div className="avatar">{initials(authorName)}</div><div><b>{authorName}</b><small>⌖ {post.city} - {post.state} • {new Date(post.created_at).toLocaleString('pt-BR')}</small></div><span>⋮</span></div>
+          <p>{post.content}</p>
+          {post.image_url && <img className="postImage" src={post.image_url} alt="Publicação do mural"/>}
+          <div className="stats"><span>♡ Curtir</span><span>💬 Comentar</span></div>
+        </article>
+      })}
     </section>
 
     <aside className="rightCol" id="ranking">
-      <div className="rankCard"><div className="rankTitle"><h3>TOP 3 PESSOAS</h3><a>Ver ranking →</a></div>{['1','2','3'].map((n,i)=><div className="rankRow" key={n}><b className={'medal m'+n}>{n}</b><div className="avatar">{['M','A','C'][i]}</div><div><b>{['Marcos Alves','Ana Paula Souza','Carlos Lima'][i]}</b><small>@usuario</small></div><strong>{['12.4K','9.8K','7.6K'][i]} pts</strong></div>)}</div>
-      <div className="rankCard"><div className="rankTitle"><h3>TOP 3 COMÉRCIOS</h3><a>Ver ranking →</a></div>{['1','2','3'].map((n,i)=><div className="rankRow" key={n}><b className={'medal m'+n}>{n}</b><div className="avatar shop">{['M','F','R'][i]}</div><div><b>{['Mercadinho do João','Farmácia Saúde+','Restaurante Sabor'][i]}</b><small>@comercio</small></div><strong>{['15.2K','12.1K','7.9K'][i]} pts</strong></div>)}</div>
-      <div className="supportLocal">🛍️ <div><b>APOIE O COMÉRCIO LOCAL</b><small>COMPRE EM REDENÇÃO - CE<br/>FORTALEÇA NOSSA CIDADE!</small></div><span>→</span></div>
-      <div className="weather"><div>☀️ <b>28°C</b><small>Tempo limpo</small></div><div>📅 <b>Dom, 07 de Setembro</b><small>Redenção - CE</small></div></div>
+      <div className="rankCard"><div className="rankTitle"><h3>TOP 3 PESSOAS</h3><a>Ver ranking →</a></div>{people.length===0?<div className="rankEmpty">Ainda não há ranking nesta cidade.</div>:people.map((person,i)=><div className="rankRow" key={person.id}><b className={'medal m'+(i+1)}>{i+1}</b><div className="avatar">{initials(person.full_name || person.username)}</div><div><b>{person.full_name || person.username}</b><small>@{person.username || 'usuario'}</small></div><strong>{person.followers_count || 0}</strong></div>)}</div>
+      <div className="rankCard"><div className="rankTitle"><h3>TOP 3 COMÉRCIOS</h3><a>Ver ranking →</a></div>{businesses.length===0?<div className="rankEmpty">Nenhum comércio ranqueado ainda.</div>:businesses.map((business,i)=><div className="rankRow" key={business.id}><b className={'medal m'+(i+1)}>{i+1}</b><div className="avatar shop">{initials(business.name)}</div><div><b>{business.name}</b><small>@{business.username || 'comercio'}</small></div><strong>★ {Number(business.rating_average || 0).toFixed(1)}</strong></div>)}</div>
+      <div className="supportLocal">🛍️ <div><b>APOIE O COMÉRCIO LOCAL</b><small>COMPRE NA SUA CIDADE<br/>FORTALEÇA O COMÉRCIO LOCAL!</small></div><span>→</span></div>
+      <div className="weather"><div>📍 <b>{profile?.city || 'Sua cidade'}</b><small>{profile?.state || 'Brasil'}</small></div><div>👤 <b>{displayName}</b><small>@{profile?.username || 'usuario'}</small></div></div>
       <blockquote>“Cidades fortes são feitas por pessoas que acreditam no seu lugar.”</blockquote>
     </aside>
   </main>

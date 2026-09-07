@@ -1,20 +1,23 @@
-# DAQUITOP V2 — Login + Cadastro Real
+# DAQUITOP V2.1 — Cadastro Brasil + funcionamento real
 
-Atualização funcional conectada ao Supabase.
+## Mantido funcionando
+- Login real via Supabase Auth.
+- Cadastro real via Supabase Auth.
+- Confirmação de e-mail.
+- Sessão persistente e logout.
+- Perfil, mural, publicação de texto e rankings conectados ao Supabase.
+- Visual DAQUITOP mantido.
 
-## O que foi adicionado
-- Login real com e-mail e senha via Supabase Auth.
-- Cadastro real com nome, @usuário, UF e cidade.
-- Sessão persistente e botão Sair.
-- Perfil do usuário carregado da tabela `profiles`.
-- Mural carregado da tabela `posts`.
-- Publicação de texto real no mural.
-- Top 3 pessoas e comércios carregados do banco.
-- Remoção dos nomes/rankings fictícios da V1.
+## Adicionado na V2.1
+- Lista oficial de todas as UFs do Brasil via API de Localidades do IBGE.
+- Cidades carregadas automaticamente conforme o estado selecionado.
+- Campo Gênero: Homem, Mulher ou Outros.
+- Estado, cidade e gênero enviados aos metadados do cadastro.
+- Ao primeiro login, o gênero é sincronizado com `profiles.gender` quando necessário.
 
-## Variáveis obrigatórias no Vercel
+## Variáveis no Vercel
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-## Observação
-Se a confirmação de e-mail estiver ativada no Supabase, o usuário precisará confirmar o e-mail antes do primeiro login.
+## IMPORTANTE — SQL V2.1
+Antes de testar um cadastro novo, execute `supabase_v2_1.sql` no SQL Editor do projeto DAQUITOP.

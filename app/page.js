@@ -19,7 +19,11 @@ export default function Home(){
   const [authMode,setAuthMode]=useState('login');
   const [authMessage,setAuthMessage]=useState('');
   const [authBusy,setAuthBusy]=useState(false);
-  const [form,setForm]=useState({email:'',password:'',full_name:'',username:'',state:'CE',city:'Redenção'});
+  const [form,setForm]=useState({email:'',password:'',full_name:'',username:'',state:'',state_id:'',city:'',gender:''});
+  const [states,setStates]=useState([]);
+  const [cities,setCities]=useState([]);
+  const [locationsBusy,setLocationsBusy]=useState(false);
+  const [locationsError,setLocationsError]=useState('');
   const [posts,setPosts]=useState([]);
   const [people,setPeople]=useState([]);
   const [businesses,setBusinesses]=useState([]);
@@ -29,6 +33,43 @@ export default function Home(){
   const displayName = profile?.full_name || session?.user?.email?.split('@')[0] || 'Usuário';
   const cityLabel = profile?.city && profile?.state ? `${profile.city} - ${profile.state}` : 'Sua cidade';
   const avatarLetter = initials(displayName);
+
+  useEffect(()=>{
+    let alive=true;
+    async function loadStates(){
+      try{
+        setLocationsError('');
+        const response=await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome');
+        if(!response.ok) throw new Error('Falha ao carregar estados');
+        const data=await response.json();
+        if(alive) setStates(data || []);
+      }catch(_error){
+        if(alive) setLocationsError('Não foi possível carregar os estados. Tente novamente.');
+      }
+    }
+    loadStates();
+    return ()=>{alive=false};
+  },[]);
+
+  async function handleStateChange(e){
+    const stateId=e.target.value;
+    const selected=states.find(item=>String(item.id)===String(stateId));
+    setForm(current=>({...current,state_id:stateId,state:selected?.sigla || '',city:''}));
+    setCities([]);
+    setLocationsError('');
+    if(!stateId) return;
+    setLocationsBusy(true);
+    try{
+      const response=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${stateId}/municipios?orderBy=nome`);
+      if(!response.ok) throw new Error('Falha ao carregar cidades');
+      const data=await response.json();
+      setCities(data || []);
+    }catch(_error){
+      setLocationsError('Não foi possível carregar as cidades desse estado. Tente novamente.');
+    }finally{
+      setLocationsBusy(false);
+    }
+  }
 
   useEffect(()=>{
     let mounted = true;
@@ -63,10 +104,16 @@ export default function Home(){
   async function loadApp(userId){
     setLoading(true);
     const {data:ownProfile}=await supabase.from('profiles').select('*').eq('id',userId).maybeSingle();
-    setProfile(ownProfile || null);
+    let effectiveProfile=ownProfile || null;
+    const metadataGender=session?.user?.user_metadata?.gender || '';
+    if(effectiveProfile && metadataGender && !effectiveProfile.gender){
+      const {data:updatedProfile}=await supabase.from('profiles').update({gender:metadataGender}).eq('id',userId).select('*').maybeSingle();
+      if(updatedProfile) effectiveProfile=updatedProfile;
+    }
+    setProfile(effectiveProfile);
 
-    const city = ownProfile?.city;
-    const state = ownProfile?.state;
+    const city = effectiveProfile?.city;
+    const state = effectiveProfile?.state;
 
     let postsQuery = supabase
       .from('posts')
@@ -117,9 +164,9 @@ export default function Home(){
       return;
     }
 
-    if(!form.full_name.trim() || !form.username.trim() || !form.city.trim() || !form.state.trim()){
+    if(!form.full_name.trim() || !form.username.trim() || !form.city.trim() || !form.state.trim() || !form.gender){
       setAuthBusy(false);
-      setAuthMessage('Preencha nome, @usuário, estado e cidade.');
+      setAuthMessage('Preencha nome, @usuário, estado, cidade e gênero.');
       return;
     }
 
@@ -132,7 +179,8 @@ export default function Home(){
           full_name:form.full_name.trim(),
           username:cleanUsername,
           state:form.state.trim().toUpperCase(),
-          city:form.city.trim()
+          city:form.city.trim(),
+          gender:form.gender
         }
       }
     });
@@ -197,10 +245,29 @@ export default function Home(){
             {authMode==='signup' && <>
               <label>Nome completo<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="Seu nome"/></label>
               <label>@Usuário<input required value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="seuusuario"/></label>
-              <div className="authGrid">
-                <label>UF<input required maxLength={2} value={form.state} onChange={e=>setForm({...form,state:e.target.value.toUpperCase()})} placeholder="CE"/></label>
-                <label>Cidade<input required value={form.city} onChange={e=>setForm({...form,city:e.target.value})} placeholder="Redenção"/></label>
+              <div className="authGrid locationGrid">
+                <label>Estado
+                  <select required value={form.state_id} onChange={handleStateChange}>
+                    <option value="">Selecione</option>
+                    {states.map(item=><option key={item.id} value={item.id}>{item.nome} ({item.sigla})</option>)}
+                  </select>
+                </label>
+                <label>Cidade
+                  <select required value={form.city} disabled={!form.state_id || locationsBusy} onChange={e=>setForm({...form,city:e.target.value})}>
+                    <option value="">{locationsBusy?'Carregando cidades...':form.state_id?'Selecione a cidade':'Escolha o estado primeiro'}</option>
+                    {cities.map(item=><option key={item.id} value={item.nome}>{item.nome}</option>)}
+                  </select>
+                </label>
               </div>
+              <label>Gênero
+                <select required value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}>
+                  <option value="">Selecione</option>
+                  <option value="homem">Homem</option>
+                  <option value="mulher">Mulher</option>
+                  <option value="outros">Outros</option>
+                </select>
+              </label>
+              {locationsError && <div className="authMessage authError">{locationsError}</div>}
             </>}
             <label>E-mail<input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="voce@email.com"/></label>
             <label>Senha<input type="password" minLength={6} required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Mínimo 6 caracteres"/></label>

@@ -7,7 +7,7 @@ const MENU = [
   ['⌂','Início'],['▣','Mural'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
 ];
 
-const CATEGORIES = ['Alimentação','Beleza','Moda','Mercado','Saúde','Serviços','Tecnologia','Educação','Construção','Automotivo','Lazer','Outros'];
+const CATEGORIES = ['Restaurante','Pizzaria','Lanchonete','Hamburgueria','Padaria','Confeitaria','Açaiteria','Sorveteria','Bar','Cafeteria','Delivery','Mercado','Supermercado','Hortifruti','Farmácia','Academia','Salão de Beleza','Barbearia','Manicure / Estética','Loja de Roupas','Calçados','Eletrônicos','Informática','Celulares / Assistência','Móveis','Material de Construção','Autopeças','Oficina Mecânica','Lava-jato','Posto de Combustível','Pet Shop','Clínica','Dentista','Ótica','Papelaria','Hotel / Pousada','Turismo','Fotografia','Eventos','Educação','Serviços','Tecnologia','Construção','Automotivo','Lazer','Outros'];
 
 function initials(name='U'){
   return String(name || 'U').trim().slice(0,1).toUpperCase();
@@ -79,6 +79,10 @@ export default function Home(){
   const [businessEdit,setBusinessEdit]=useState(null);
   const [reviewForm,setReviewForm]=useState({rating:5,comment:''});
   const [businessPostText,setBusinessPostText]=useState('');
+  const [businessPostFile,setBusinessPostFile]=useState(null);
+  const [businessPostPreview,setBusinessPostPreview]=useState('');
+  const businessPostFileRef=useRef(null);
+  const [profileAwards,setProfileAwards]=useState([]);
 
   const [settings,setSettings]=useState({full_name:'',username:'',bio:'',activity:'',public_phone:'',website:'',gender:'',avatar_url:'',cover_url:''});
   const [avatarUploading,setAvatarUploading]=useState(false);
@@ -88,7 +92,7 @@ export default function Home(){
   const [exploreState,setExploreState]=useState('');
   const [exploreCities,setExploreCities]=useState([]);
   const [exploreCity,setExploreCity]=useState('');
-  const [exploreData,setExploreData]=useState({posts:[],authors:{},businesses:[],people:[]});
+  const [exploreData,setExploreData]=useState({posts:[],authors:{},postBusinesses:{},businesses:[],people:[]});
   const [exploreBusy,setExploreBusy]=useState(false);
   const [explorePostText,setExplorePostText]=useState('');
 
@@ -197,8 +201,8 @@ export default function Home(){
   async function loadCity(city,state){
     if(!city||!state)return;
     const [{data:peopleData},{data:businessData}]=await Promise.all([
-      supabase.from('profiles').select('*').eq('city',city).eq('state',state).order('followers_count',{ascending:false}).limit(100),
-      supabase.from('businesses').select('*').eq('city',city).eq('state',state).order('rating_average',{ascending:false}).order('reviews_count',{ascending:false}).limit(100)
+      supabase.from('profiles').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state)).order('followers_count',{ascending:false}).limit(100),
+      supabase.from('businesses').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state)).order('rating_average',{ascending:false}).order('reviews_count',{ascending:false}).limit(100)
     ]);
     const cleanPeople=(peopleData||[]).filter(x=>x.account_type!=='business');
     setPeople(cleanPeople);
@@ -238,7 +242,7 @@ export default function Home(){
   }
 
   async function loadPosts(city,state){
-    const {data}=await supabase.from('posts').select('*').eq('city',city).eq('state',state).order('created_at',{ascending:false}).limit(50);
+    const {data}=await supabase.from('posts').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state)).order('created_at',{ascending:false}).limit(50);
     const h=await hydratePosts(data||[]);
     setPosts(h.list); setPostAuthors(h.authors); setPostBusinesses(h.biz); setLikedPosts(h.likes); setComments(h.grouped); setCommentAuthors(h.cAuthors);
   }
@@ -265,7 +269,7 @@ export default function Home(){
 
   async function loadCompetitions(city,state){
     if(!city||!state)return;
-    const {data}=await supabase.from('daquitop_competition_votes').select('*').eq('city',city).eq('state',state);
+    const {data}=await supabase.from('daquitop_competition_votes').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state));
     setCompetitionVotes(data||[]);
   }
 
@@ -305,7 +309,7 @@ export default function Home(){
       const image_url=file?await uploadMedia(file,'post'):null;
       const {error}=await supabase.from('posts').insert({author_id:session.user.id,content,city,state,post_type:'user',business_id:business?.id||null,image_url});
       if(error)throw error;
-      setPostText('');setPostFile(null);setPostPreview('');setExplorePostText('');setBusinessPostText('');
+      setPostText('');setPostFile(null);setPostPreview('');setExplorePostText('');setBusinessPostText('');setBusinessPostFile(null);setBusinessPostPreview('');
       if(after)await after(); else await loadPosts(city,state);
       setNotice('Publicação enviada com sucesso.');
     }catch(e){alert(`Não foi possível publicar: ${e.message}`)}
@@ -346,13 +350,34 @@ export default function Home(){
     if(selectedProfile?.id===person.id){const {data}=await supabase.from('profiles').select('*').eq('id',person.id).single();setSelectedProfile(data)}
   }
 
+  async function loadProfileAwards(person){
+    if(!person?.id||!person?.city||!person?.state){setProfileAwards([]);return}
+    const ckey=cityKey(person.city), skey=stateKey(person.state);
+    const [{data:cityPeople},{data:votes}]=await Promise.all([
+      supabase.from('profiles').select('id,followers_count').eq('city_key',ckey).eq('state_key',skey).order('followers_count',{ascending:false}).limit(100),
+      supabase.from('daquitop_competition_votes').select('*').eq('city_key',ckey).eq('state_key',skey)
+    ]);
+    const awards=[]; const ranked=cityPeople||[]; const pos=ranked.findIndex(x=>x.id===person.id);
+    if(pos===0&&ranked.length)awards.push({icon:'🥇',title:'TOP 1 Popular',text:'1º lugar em seguidores na cidade'});
+    else if(pos===1)awards.push({icon:'🥈',title:'TOP 2 Popular',text:'2º lugar em seguidores na cidade'});
+    else if(pos===2)awards.push({icon:'🥉',title:'TOP 3 Popular',text:'3º lugar em seguidores na cidade'});
+    for(const type of ['month','year']){
+      const key=periodKey(type); const counts={};
+      (votes||[]).filter(v=>v.period_type===type&&v.period_key===key).forEach(v=>counts[v.candidate_id]=(counts[v.candidate_id]||0)+1);
+      const max=Math.max(0,...Object.values(counts));
+      if(max>0&&counts[person.id]===max)awards.push({icon:type==='month'?'🏆':'👑',title:type==='month'?'Líder do Mês':'Líder do Ano',text:`${counts[person.id]} voto(s) na competição atual`});
+    }
+    if((person.followers_count||0)>=10)awards.push({icon:'⭐',title:'Destaque Local',text:'10 ou mais seguidores locais'});
+    setProfileAwards(awards);
+  }
+
   async function openProfile(personOrId){
     const id=typeof personOrId==='string'?personOrId:personOrId.id;
     const {data}=await supabase.from('profiles').select('*').eq('id',id).maybeSingle();
-    setSelectedProfile(data||profile); setActive('Perfil');
+    const target=data||profile; setSelectedProfile(target); await loadProfileAwards(target); setActive('Perfil');
   }
 
-  function openOwnProfile(){setSelectedProfile(profile);setActive('Perfil')}
+  async function openOwnProfile(){setSelectedProfile(profile);await loadProfileAwards(profile);setActive('Perfil')}
 
   async function saveSettings(e){
     e.preventDefault(); setBusy(true); setNotice('');
@@ -411,6 +436,12 @@ export default function Home(){
     try{const url=await uploadMedia(file,field==='logo_url'?'business-logo':'business-cover');setBusinessEdit(v=>({...v,[field]:url}))}catch(e){alert(e.message)}
   }
 
+  function chooseBusinessPostFile(file){
+    if(!file)return;
+    if(businessPostPreview)URL.revokeObjectURL(businessPostPreview);
+    setBusinessPostFile(file); setBusinessPostPreview(URL.createObjectURL(file));
+  }
+
   async function submitReview(e){
     e.preventDefault(); if(!selectedBusiness)return;
     const payload={business_id:selectedBusiness.id,author_id:session.user.id,rating:Number(reviewForm.rating),comment:reviewForm.comment.trim()};
@@ -422,12 +453,12 @@ export default function Home(){
     if(!exploreCity||!exploreState)return;
     setExploreBusy(true);
     const [{data:p},{data:b},{data:raw}]=await Promise.all([
-      supabase.from('profiles').select('*').eq('city',exploreCity).eq('state',exploreState).order('followers_count',{ascending:false}).limit(50),
-      supabase.from('businesses').select('*').eq('city',exploreCity).eq('state',exploreState).order('rating_average',{ascending:false}).limit(50),
-      supabase.from('posts').select('*').eq('city',exploreCity).eq('state',exploreState).order('created_at',{ascending:false}).limit(30)
+      supabase.from('profiles').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('followers_count',{ascending:false}).limit(50),
+      supabase.from('businesses').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('rating_average',{ascending:false}).limit(50),
+      supabase.from('posts').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('created_at',{ascending:false}).limit(30)
     ]);
     const h=await hydratePosts(raw||[]);
-    setExploreData({posts:h.list,authors:h.authors,businesses:b||[],people:(p||[]).filter(x=>x.account_type!=='business')});
+    setExploreData({posts:h.list,authors:h.authors,postBusinesses:h.biz,businesses:b||[],people:(p||[]).filter(x=>x.account_type!=='business')});
     setExploreBusy(false);
   }
 
@@ -549,7 +580,7 @@ export default function Home(){
         <div className="businessHero" style={selectedBusiness.cover_url?{backgroundImage:`linear-gradient(90deg,rgba(8,15,30,.85),rgba(8,15,30,.25)),url(${selectedBusiness.cover_url})`}:{}}><Avatar profile={{avatar_url:selectedBusiness.logo_url}} name={selectedBusiness.name} size="xl"/><div><h1>{selectedBusiness.name}</h1><p>@{selectedBusiness.username||'comercio'} • {selectedBusiness.category||'Comércio local'}</p><span>★ {Number(selectedBusiness.rating_average||0).toFixed(1)} ({selectedBusiness.reviews_count||0} avaliações)</span></div>{selectedBusiness.owner_id&&selectedBusiness.owner_id!==session.user.id&&<button className="primaryBtn" onClick={async()=>{const {data}=await supabase.from('profiles').select('*').eq('id',selectedBusiness.owner_id).maybeSingle();if(data)openChat(data)}}>Mensagem</button>}</div>
         <div className="twoCol"><div>
           <div className="panel"><h2>Sobre</h2><p>{selectedBusiness.description||'Este comércio ainda não adicionou uma descrição.'}</p><div className="infoGrid"><span>📍 {selectedBusiness.address||`${selectedBusiness.city} - ${selectedBusiness.state}`}</span>{selectedBusiness.whatsapp&&<span>📱 {selectedBusiness.whatsapp}</span>}{selectedBusiness.website&&<span>🌐 {selectedBusiness.website}</span>}</div></div>
-          {mine&&<div className="panel"><h2>Publicar como comércio</h2>{Composer({text:businessPostText,setText:setBusinessPostText,allowPhoto:false,onPublish:()=>publishPost({text:businessPostText,file:null,city:selectedBusiness.city,state:selectedBusiness.state,business:selectedBusiness,after:()=>loadBusiness(selectedBusiness.id)})})}</div>}
+          {mine&&<div className="panel"><h2>Publicar como comércio</h2><section className="composer businessComposer"><div className="row"><Avatar profile={{avatar_url:selectedBusiness.logo_url}} name={selectedBusiness.name} size="sm"/><textarea rows={2} value={businessPostText} onChange={e=>setBusinessPostText(e.target.value)} placeholder={`Divulgue novidades, produtos ou serviços de ${selectedBusiness.name}`}/></div>{businessPostPreview&&<div className="previewWrap"><img src={businessPostPreview} alt="Prévia do comércio"/><button onClick={()=>{setBusinessPostFile(null);setBusinessPostPreview('')}}>×</button></div>}<div className="actions"><input ref={businessPostFileRef} type="file" accept="image/*" hidden onChange={e=>chooseBusinessPostFile(e.target.files?.[0])}/><button onClick={()=>businessPostFileRef.current?.click()}>▧ Foto do produto/serviço</button><button className="publish" disabled={busy||(!businessPostText.trim()&&!businessPostFile)} onClick={()=>publishPost({text:businessPostText,file:businessPostFile,city:selectedBusiness.city,state:selectedBusiness.state,business:selectedBusiness,after:()=>loadBusiness(selectedBusiness.id)})}>{busy?'Publicando...':'➤ Publicar'}</button></div></section></div>}
           <div className="panel"><h2>Publicações do comércio</h2>{businessPosts.length?<div className="feed">{businessPosts.map(p=>PostCard({post:p,authors:businessPostAuthors,bizMap:{[selectedBusiness.id]:selectedBusiness},interactive:false}))}</div>:<p className="muted">Este comércio ainda não publicou nada.</p>}</div>
           <div className="panel"><h2>Avaliações</h2>{selectedBusiness.owner_id!==session.user.id&&<form className="stackForm" onSubmit={submitReview}><label>Nota<select value={reviewForm.rating} onChange={e=>setReviewForm({...reviewForm,rating:e.target.value})}><option value="5">5 - Excelente</option><option value="4">4 - Muito bom</option><option value="3">3 - Bom</option><option value="2">2 - Regular</option><option value="1">1 - Ruim</option></select></label><label>Comentário<textarea value={reviewForm.comment} onChange={e=>setReviewForm({...reviewForm,comment:e.target.value})} placeholder="Conte sua experiência"/></label><button className="primaryBtn">Salvar avaliação</button></form>}{businessReviews.length?businessReviews.map(r=>{const a=reviewAuthors[r.author_id]||{};return <div className="review" key={r.id}><Avatar profile={a} size="xs"/><div><b>{a.full_name||a.username||'Usuário'} • {'★'.repeat(r.rating)}</b><p>{r.comment||'Sem comentário.'}</p><small>{fmtDate(r.created_at)}</small></div></div>}):<p className="muted">Ainda não há avaliações.</p>}</div>
         </div><div>{mine&&<form className="panel stackForm" onSubmit={updateBusiness}><h2>Editar comércio</h2><label>Nome<input value={businessEdit?.name||''} onChange={e=>setBusinessEdit(v=>({...v,name:e.target.value}))}/></label><label>@Usuário<input value={businessEdit?.username||''} onChange={e=>setBusinessEdit(v=>({...v,username:e.target.value}))}/></label><label>Categoria<select value={businessEdit?.category||''} onChange={e=>setBusinessEdit(v=>({...v,category:e.target.value}))}><option value="">Selecione</option>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label><label>Descrição<textarea value={businessEdit?.description||''} onChange={e=>setBusinessEdit(v=>({...v,description:e.target.value}))}/></label><label>Endereço<input value={businessEdit?.address||''} onChange={e=>setBusinessEdit(v=>({...v,address:e.target.value}))}/></label><label>WhatsApp<input value={businessEdit?.whatsapp||''} onChange={e=>setBusinessEdit(v=>({...v,whatsapp:e.target.value}))}/></label><label>Site<input value={businessEdit?.website||''} onChange={e=>setBusinessEdit(v=>({...v,website:e.target.value}))}/></label><label>Logo<input type="file" accept="image/*" onChange={e=>uploadBusinessImage('logo_url',e.target.files?.[0])}/></label><label>Capa<input type="file" accept="image/*" onChange={e=>uploadBusinessImage('cover_url',e.target.files?.[0])}/></label><button className="primaryBtn" disabled={busy}>Salvar comércio</button></form>}</div></div>
@@ -562,12 +593,12 @@ export default function Home(){
 
   function ProfileScreen(){
     const p=selectedProfile||profile; const own=p?.id===session.user.id; const canFollow=!own&&sameCity(profile,p);
-    return <><button className="backBtn" onClick={()=>{setSelectedProfile(profile);setActive('Início')}}>← Voltar</button><section className="profileHero"><div className="profileCover" style={p?.cover_url?{backgroundImage:`url(${p.cover_url})`}:{}}></div><div className="profileMain"><Avatar profile={p} name={p?.full_name} size="xxl"/><div className="grow"><h1>{p?.full_name||p?.username}</h1><p>@{p?.username||'usuario'} • 📍 {p?.city} - {p?.state}</p>{p?.activity&&<span className="chip">{p.activity}</span>}</div><div className="profileActions">{own?<button className="primaryBtn" onClick={()=>setActive('Configurações')}>Editar perfil</button>:<>{canFollow&&<button className="primaryBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}<button className="secondaryBtn" onClick={()=>openChat(p)}>Mensagem</button></>}</div></div></section><div className="profileStats"><div><b>{p?.followers_count||0}</b><span>Seguidores</span></div><div><b>{p?.following_count||0}</b><span>Seguindo</span></div><div><b>{p?.city||'-'}</b><span>Cidade</span></div></div><div className="panel"><h2>Sobre</h2><p>{p?.bio||'Este perfil ainda não escreveu uma bio.'}</p>{p?.public_phone&&<p>📱 {p.public_phone}</p>}{p?.website&&<p>🌐 {p.website}</p>}</div>{!canFollow&&!own&&<div className="infoBanner">Você está visitando um perfil de outra cidade. O ranking por seguidores considera conexões locais.</div>}</>
+    return <><button className="backBtn" onClick={()=>{setSelectedProfile(profile);setActive('Início')}}>← Voltar</button><section className="profileHero"><div className="profileCover" style={p?.cover_url?{backgroundImage:`url(${p.cover_url})`}:{}}></div><div className="profileMain"><Avatar profile={p} name={p?.full_name} size="xxl"/><div className="grow"><h1>{p?.full_name||p?.username}</h1><p>@{p?.username||'usuario'} • 📍 {p?.city} - {p?.state}</p>{p?.activity&&<span className="chip">{p.activity}</span>}</div><div className="profileActions">{own?<button className="primaryBtn" onClick={()=>setActive('Configurações')}>Editar perfil</button>:<>{canFollow&&<button className="primaryBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}<button className="secondaryBtn" onClick={()=>openChat(p)}>Mensagem</button></>}</div></div></section><div className="profileStats"><div><b>{p?.followers_count||0}</b><span>Seguidores</span></div><div><b>{p?.following_count||0}</b><span>Seguindo</span></div><div><b>{p?.city||'-'}</b><span>Cidade</span></div></div><div className="panel"><h2>Sobre</h2><p>{p?.bio||'Este perfil ainda não escreveu uma bio.'}</p>{p?.public_phone&&<p>📱 {p.public_phone}</p>}{p?.website&&<p>🌐 {p.website}</p>}</div><div className="panel"><h2>Medalhas e Troféus</h2>{profileAwards.length?<div className="awardsGrid">{profileAwards.map((a,i)=><div className="awardCard" key={`${a.title}-${i}`}><span>{a.icon}</span><div><b>{a.title}</b><small>{a.text}</small></div></div>)}</div>:<p className="muted">Este perfil ainda não conquistou medalhas. Participe dos rankings e competições da cidade.</p>}</div>{!canFollow&&!own&&<div className="infoBanner">Você está visitando um perfil de outra cidade. O ranking por seguidores considera conexões locais.</div>}</>
   }
 
   function SettingsScreen(){return <><PageHeader title="Configurações" subtitle="Edite seu perfil. Sua cidade permanece vinculada ao cadastro."/><form className="panel stackForm settingsForm" onSubmit={saveSettings}><div className="mediaSettings"><div><Avatar profile={{avatar_url:settings.avatar_url}} name={settings.full_name} size="xl"/><label className="uploadBtn">{avatarUploading?'Enviando...':'Trocar foto'}<input type="file" hidden accept="image/*" onChange={e=>uploadProfileImage('avatar_url',e.target.files?.[0])}/></label></div><div className="coverPreview" style={settings.cover_url?{backgroundImage:`url(${settings.cover_url})`}:{}}><label className="uploadBtn">{coverUploading?'Enviando...':'Trocar capa'}<input type="file" hidden accept="image/*" onChange={e=>uploadProfileImage('cover_url',e.target.files?.[0])}/></label></div></div><div className="formGrid"><label>Nome completo<input required value={settings.full_name} onChange={e=>setSettings({...settings,full_name:e.target.value})}/></label><label>@Usuário<input required value={settings.username} onChange={e=>setSettings({...settings,username:e.target.value})}/></label><label>Atividade / profissão<input value={settings.activity} onChange={e=>setSettings({...settings,activity:e.target.value})} placeholder="Ex.: Comerciante, Estudante"/></label><label>Gênero<select value={settings.gender} onChange={e=>setSettings({...settings,gender:e.target.value})}><option value="">Não informar</option><option value="homem">Homem</option><option value="mulher">Mulher</option><option value="outros">Outros</option></select></label><label>Telefone público<input value={settings.public_phone} onChange={e=>setSettings({...settings,public_phone:e.target.value})}/></label><label>Site<input value={settings.website} onChange={e=>setSettings({...settings,website:e.target.value})}/></label><label>Cidade<input value={profile.city||''} disabled/></label><label>Estado<input value={profile.state||''} disabled/></label></div><label>Bio<textarea rows={4} value={settings.bio} onChange={e=>setSettings({...settings,bio:e.target.value})} placeholder="Conte um pouco sobre você"/></label><button className="primaryBtn" disabled={busy}>Salvar alterações</button></form></>}
 
-  function ExploreScreen(){return <><PageHeader title="Explorar Cidade" subtitle="Visite qualquer cidade do Brasil sem alterar sua cidade de cadastro."/><div className="panel"><div className="exploreControls"><select value={exploreStateId} onChange={handleExploreState}><option value="">Escolha o estado</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={exploreCity} disabled={!exploreStateId||exploreBusy} onChange={e=>setExploreCity(e.target.value)}><option value="">Escolha a cidade</option>{exploreCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="primaryBtn" disabled={!exploreCity||exploreBusy} onClick={explore}>{exploreBusy?'Carregando...':'Explorar'}</button></div></div>{exploreCity&&exploreData.posts.length+exploreData.people.length+exploreData.businesses.length>=0&&<><div className="cityVisitHero"><span>VISITANDO</span><h1>{exploreCity} - {exploreState}</h1><p>Seu cadastro continua em {cityLabel}.</p></div><div className="panel"><h2>Publicar no mural desta cidade</h2>{Composer({text:explorePostText,setText:setExplorePostText,allowPhoto:false,onPublish:()=>publishPost({text:explorePostText,file:null,city:exploreCity,state:exploreState,after:explore})})}</div><div className="twoCol"><div className="panel"><h2>Pessoas em destaque</h2>{exploreData.people.slice(0,10).map((p,i)=><div className="listRow" key={p.id}><b>#{i+1}</b><Avatar profile={p}/><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></div>)}</div><div className="panel"><h2>Comércios</h2>{exploreData.businesses.slice(0,10).map(b=><button className="listRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name}</b><small>{b.category||'Comércio local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}</div></div><h2 className="sectionHeading">Mural de {exploreCity}</h2>{exploreData.posts.length?exploreData.posts.map(p=>PostCard({post:p,authors:exploreData.authors,bizMap:{},interactive:false})):<Empty title="Ainda não há publicações nesta cidade."/>}</>}</>}
+  function ExploreScreen(){return <><PageHeader title="Explorar Cidade" subtitle="Visite qualquer cidade do Brasil sem alterar sua cidade de cadastro."/><div className="panel"><div className="exploreControls"><select value={exploreStateId} onChange={handleExploreState}><option value="">Escolha o estado</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={exploreCity} disabled={!exploreStateId||exploreBusy} onChange={e=>setExploreCity(e.target.value)}><option value="">Escolha a cidade</option>{exploreCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="primaryBtn" disabled={!exploreCity||exploreBusy} onClick={explore}>{exploreBusy?'Carregando...':'Explorar'}</button></div></div>{exploreCity&&exploreData.posts.length+exploreData.people.length+exploreData.businesses.length>=0&&<><div className="cityVisitHero"><span>VISITANDO</span><h1>{exploreCity} - {exploreState}</h1><p>Seu cadastro continua em {cityLabel}.</p></div><div className="panel"><h2>Publicar no mural desta cidade</h2>{Composer({text:explorePostText,setText:setExplorePostText,allowPhoto:false,onPublish:()=>publishPost({text:explorePostText,file:null,city:exploreCity,state:exploreState,after:explore})})}</div><div className="twoCol"><div className="panel"><h2>Pessoas em destaque</h2>{!exploreData.people.length&&<p className="muted">Nenhuma pessoa cadastrada nesta cidade ainda.</p>}{exploreData.people.slice(0,10).map((p,i)=><div className="listRow" key={p.id}><b>#{i+1}</b><Avatar profile={p}/><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></div>)}</div><div className="panel"><h2>Comércios</h2>{!exploreData.businesses.length&&<p className="muted">Nenhum comércio cadastrado nesta cidade ainda.</p>}{exploreData.businesses.slice(0,10).map(b=><button className="listRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name}</b><small>{b.category||'Comércio local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}</div></div><h2 className="sectionHeading">Mural de {exploreCity}</h2>{exploreData.posts.length?exploreData.posts.map(p=>PostCard({post:p,authors:exploreData.authors,bizMap:exploreData.postBusinesses,interactive:false})):<Empty title="Ainda não há publicações nesta cidade."/>}</>}</>}
 
   function MessagesScreen(){
     const conversations={};

@@ -1,51 +1,21 @@
-# DAQUITOP V3.1 — Correção de digitação e foco
+# DAQUITOP V4.0 — Atualização Profunda
 
-Esta versão mantém toda a V3.0 e corrige o problema em que os campos perdiam o foco a cada tecla.
+Atualização baseada na V3.1 funcional, preservando login, cadastro, mural, curtidas, comentários, seguidores, comércio, avaliações, mensagens, suporte e competições.
 
-## Importante
-- Não há SQL novo para esta correção.
-- O banco V3.0 já aplicado deve permanecer como está.
-- Envie ao GitHub apenas `app`, `lib`, `next.config.js`, `package.json` e `README.md`.
-
-## Corrigido
-- Bio e campos de Configurações.
-- Publicação no Mural/Início.
-- Comentários.
-- Publicações de Comércio e Explorar Cidade.
-- Formulários de Mensagens e Suporte.
-
-# DAQUITOP V3.0 COMPLETA
-
-Atualização funcional do DAQUITOP mantendo o visual escuro azul/roxo/magenta da V2.1.
-
-## Recursos
-
-- Cadastro e login Supabase
-- Estados e cidades oficiais via API do IBGE
-- Perfil completo com foto, capa, bio, atividade, telefone público e site
-- Configurações de perfil
-- Mural real com texto, foto, curtidas e comentários
-- Seguidores locais e ranking de populares
-- Cadastro, perfil, edição, publicações e avaliações de comércios
-- Explorar qualquer cidade sem mudar a cidade cadastrada
-- Publicar no mural da cidade visitada
-- Mensagens privadas
-- Suporte com chamados e anexo de imagem
-- Competições Melhor do Mês e Melhor do Ano com 1 voto por conta
-- Upload de imagens pelo Supabase Storage
+## O que muda na V4.0
+- Contexto de cidade reforçado com `city_key/state_key` no Supabase para pessoas, comércios, posts e competições.
+- Mural, populares, comércios e ranking carregados sempre pela cidade oficial do perfil.
+- Explorar Cidade busca dados reais da cidade visitada sem alterar a cidade de cadastro.
+- Perfil com Medalhas e Troféus dinâmicos: Top 1/2/3 Popular, líder do mês, líder do ano e Destaque Local.
+- Comércio pode publicar texto + foto de produto/comida/serviço.
+- Publicação do comércio usa logo do comércio quando houver.
+- Lista ampla de categorias comerciais, incluindo Restaurante, Padaria, Pizzaria e muitas outras.
+- Mensagens, suporte, avaliações e demais módulos da V3.1 permanecem.
 
 ## Instalação
+1. Execute `supabase_v4_profunda.sql` no Supabase SQL Editor.
+2. Envie `app`, `lib`, `package.json`, `next.config.js` e `README.md` para o repositório GitHub.
+3. Aguarde o deploy do Vercel.
+4. Teste com duas contas em cidades diferentes e duas contas na mesma cidade.
 
-1. Execute `supabase_v3_completa.sql` no SQL Editor do Supabase.
-2. Depois envie para a raiz do GitHub os arquivos/pastas do projeto, substituindo os atuais.
-3. Aguarde o deploy automático do Vercel.
-4. Teste cada módulo com duas contas.
-
-## Variáveis no Vercel
-
-Mantém as mesmas da V2.1:
-
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-
-Não use service role no frontend.
+Status: EM TESTE até validar no Vercel/Supabase.

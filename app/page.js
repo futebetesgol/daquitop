@@ -7,6 +7,12 @@ const MENU = [
   ['⌂','Início'],['▣','Mural'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
 ];
 
+const OWNER_EMAIL = 'joaopedrorodriguesdasilvagomes@gmail.com';
+
+function isOwnerEmail(email=''){
+  return String(email || '').trim().toLowerCase() === OWNER_EMAIL;
+}
+
 const CATEGORIES = ['Restaurante','Pizzaria','Lanchonete','Hamburgueria','Padaria','Confeitaria','Açaiteria','Sorveteria','Bar','Cafeteria','Delivery','Mercado','Supermercado','Hortifruti','Farmácia','Academia','Salão de Beleza','Barbearia','Manicure / Estética','Loja de Roupas','Calçados','Eletrônicos','Informática','Celulares / Assistência','Móveis','Material de Construção','Autopeças','Oficina Mecânica','Lava-jato','Posto de Combustível','Pet Shop','Clínica','Dentista','Ótica','Papelaria','Hotel / Pousada','Turismo','Fotografia','Eventos','Educação','Serviços','Tecnologia','Construção','Automotivo','Lazer','Outros'];
 
 function initials(name='U'){
@@ -113,6 +119,15 @@ export default function Home(){
   const [tickets,setTickets]=useState([]);
   const [supportForm,setSupportForm]=useState({category:'duvida',subject:'',message:'',image:null});
 
+  const [siteBanner,setSiteBanner]=useState('/cidarank-national-banner.png');
+  const [ownerTab,setOwnerTab]=useState('dashboard');
+  const [ownerUsers,setOwnerUsers]=useState([]);
+  const [ownerTickets,setOwnerTickets]=useState([]);
+  const [ownerPosts,setOwnerPosts]=useState([]);
+  const [ownerBusinesses,setOwnerBusinesses]=useState([]);
+  const [ownerBusy,setOwnerBusy]=useState(false);
+  const [ownerReply,setOwnerReply]=useState({});
+
   const [competitionType,setCompetitionType]=useState('month');
   const [competitionVotes,setCompetitionVotes]=useState([]);
 
@@ -121,6 +136,9 @@ export default function Home(){
   const displayName=profile?.full_name || session?.user?.email?.split('@')[0] || 'Usuário';
   const cityLabel=profile?.city && profile?.state ? `${profile.city} - ${profile.state}` : 'Sua cidade';
   const heroTitle=cityLabel.toUpperCase();
+  const isOwner=isOwnerEmail(session?.user?.email);
+  const isAdmin=isOwner || ['owner','admin'].includes(String(profile?.role||'').toLowerCase());
+  const menuItems=isAdmin?[...MENU,['♛','Painel do Dono']]:MENU;
 
   useEffect(()=>{
     let alive=true;
@@ -195,8 +213,18 @@ export default function Home(){
       loadFollowing(userId),
       loadMessages(userId),
       loadTickets(userId),
-      loadCompetitions(current.city,current.state)
+      loadCompetitions(current.city,current.state),
+      loadSiteSettings()
     ]);
+    if(isOwnerEmail(session?.user?.email) || ['owner','admin'].includes(String(current?.role||'').toLowerCase())){
+      await loadOwnerData();
+    }
+    if(current?.is_suspended && !isOwnerEmail(session?.user?.email)){
+      await supabase.auth.signOut();
+      setAuthMessage('Esta conta está suspensa. Entre em contato com o suporte do CIDARANK.');
+      setLoading(false);
+      return;
+    }
     setLoading(false);
   }
 
@@ -282,6 +310,100 @@ export default function Home(){
     setCompetitionVotes(data||[]);
   }
 
+  async function loadSiteSettings(){
+    try{
+      const {data,error}=await supabase.from('cidarank_site_settings').select('value').eq('key','national_banner').maybeSingle();
+      if(!error && data?.value)setSiteBanner(data.value);
+    }catch(e){
+      console.warn('Configuração de banner ainda não disponível:',e?.message||e);
+    }
+  }
+
+  async function loadOwnerData(){
+    const ownerNow=isOwnerEmail(session?.user?.email);
+    const adminNow=ownerNow || ['owner','admin'].includes(String(profile?.role||'').toLowerCase());
+    if(!adminNow)return;
+    setOwnerBusy(true);
+    try{
+      const [u,t,p,b]=await Promise.all([
+        supabase.from('profiles').select('*').order('created_at',{ascending:false}).limit(500),
+        supabase.from('daquitop_support_tickets').select('*').order('created_at',{ascending:false}).limit(300),
+        supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(200),
+        supabase.from('businesses').select('*').order('created_at',{ascending:false}).limit(300)
+      ]);
+      setOwnerUsers(u.data||[]);
+      setOwnerTickets(t.data||[]);
+      setOwnerPosts(p.data||[]);
+      setOwnerBusinesses(b.data||[]);
+      const userIds=[...new Set((t.data||[]).map(x=>x.user_id).filter(Boolean))];
+      if(userIds.length){
+        const {data:ticketPeople}=await supabase.from('profiles').select('id,full_name,username,avatar_url').in('id',userIds);
+        setMessagePeople(v=>({...v,...Object.fromEntries((ticketPeople||[]).map(x=>[x.id,x]))}));
+      }
+    }catch(e){
+      console.error(e);
+      setNotice('O painel abriu, mas alguns dados administrativos não puderam ser carregados. Execute o SQL de instalação do painel.');
+    }
+    setOwnerBusy(false);
+  }
+
+  async function changeNationalBanner(file){
+    if(!file || !isOwner)return;
+    setOwnerBusy(true);
+    try{
+      const url=await uploadMedia(file,'national-banner');
+      const {error}=await supabase.from('cidarank_site_settings').upsert({
+        key:'national_banner',
+        value:url,
+        updated_by:session.user.id,
+        updated_at:new Date().toISOString()
+      },{onConflict:'key'});
+      if(error)throw error;
+      setSiteBanner(url);
+      setNotice('Banner nacional do CIDARANK atualizado para todo o site.');
+    }catch(e){
+      alert(`Não foi possível trocar o banner: ${e.message}`);
+    }
+    setOwnerBusy(false);
+  }
+
+  async function ownerToggleUser(user,field){
+    if(!isAdmin || !user?.id)return;
+    if(user.id===session.user.id && (field==='is_suspended' || field==='role')){
+      alert('Por segurança, você não pode suspender nem remover o próprio acesso de dono.');
+      return;
+    }
+    const payload={updated_at:new Date().toISOString()};
+    if(field==='verified')payload.verified=!Boolean(user.verified);
+    if(field==='is_suspended')payload.is_suspended=!Boolean(user.is_suspended);
+    if(field==='role')payload.role=String(user.role||'').toLowerCase()==='admin'?'user':'admin';
+    const {error}=await supabase.from('profiles').update(payload).eq('id',user.id);
+    if(error){alert(`Não foi possível atualizar o usuário: ${error.message}`);return}
+    await loadOwnerData();
+  }
+
+  async function ownerDeletePost(post){
+    if(!isAdmin||!post?.id)return;
+    if(!confirm('Excluir esta publicação do CIDARANK?'))return;
+    const {error}=await supabase.from('posts').delete().eq('id',post.id);
+    if(error){alert(`Não foi possível excluir: ${error.message}`);return}
+    await Promise.all([loadOwnerData(),loadPosts(profile.city,profile.state)]);
+    setNotice('Publicação removida pelo painel do dono.');
+  }
+
+  async function ownerReplyTicket(ticket,status='em_analise'){
+    if(!isAdmin||!ticket?.id)return;
+    const response=String(ownerReply[ticket.id]??ticket.admin_response??'').trim();
+    const {error}=await supabase.from('daquitop_support_tickets').update({
+      status,
+      admin_response:response||null,
+      updated_at:new Date().toISOString()
+    }).eq('id',ticket.id);
+    if(error){alert(`Não foi possível atualizar o chamado: ${error.message}`);return}
+    await loadOwnerData();
+    setNotice('Chamado atualizado.');
+  }
+
   async function handleAuth(e){
     e.preventDefault(); setAuthBusy(true); setAuthMessage('');
     if(authMode==='login'){
@@ -345,7 +467,7 @@ export default function Home(){
   }
 
   async function deletePost(post){
-    if(post.author_id!==session.user.id)return;
+    if(post.author_id!==session.user.id && !isAdmin)return;
     if(!confirm('Excluir esta publicação?'))return;
     await supabase.from('posts').delete().eq('id',post.id); await loadPosts(profile.city,profile.state);
   }
@@ -520,7 +642,7 @@ export default function Home(){
     const key=periodKey(type); return competitionVotes.find(v=>v.voter_id===session?.user?.id&&v.period_type===type&&v.period_key===key)?.candidate_id||null;
   }
 
-  if(loading&&session)return <div className="screenCenter"><div className="loader"></div><p>Carregando DAQUITOP...</p></div>;
+  if(loading&&session)return <div className="screenCenter"><div className="loader"></div><p>Carregando CIDARANK...</p></div>;
 
   if(!session){
     return <main className="authPage">
@@ -563,14 +685,21 @@ export default function Home(){
     return <section className="composer"><div className="row"><Avatar profile={profile} name={displayName} size="sm"/><textarea rows={2} value={text} onChange={e=>setText(e.target.value)} placeholder={`No que você está pensando, ${displayName}?`}/></div>{preview&&<div className="previewWrap"><img src={preview} alt="Prévia"/><button onClick={()=>{setPostFile(null);setPostPreview('')}}>×</button></div>}<div className="actions">{allowPhoto&&<><input ref={postFileRef} type="file" accept="image/*" hidden onChange={e=>choosePostFile(e.target.files?.[0])}/><button onClick={()=>postFileRef.current?.click()}>▧ Foto</button></>}<button className="publish" disabled={busy||(!String(text).trim()&&!postFile)} onClick={onPublish}>{busy?'Publicando...':'➤ Publicar'}</button></div></section>
   }
 
+  function NationalBanner({compact=false}){
+    return <section className={`nationalBanner ${compact?'compact':''}`}>
+      <img src={siteBanner||'/cidarank-national-banner.png'} alt="CIDARANK - pessoas, rankings e estabelecimentos de todo o Brasil"/>
+      {isOwner&&<label className="ownerBannerEdit">♛ {ownerBusy?'Enviando...':'Trocar banner nacional'}<input type="file" hidden accept="image/*" disabled={ownerBusy} onChange={e=>changeNationalBanner(e.target.files?.[0])}/></label>}
+    </section>
+  }
+
   function HomeScreen(){return <>
-    <section className="hero"><div className="heroTop">BEM-VINDO AO</div><h1>DAQUI<span>TOP</span></h1><h2>{heroTitle}</h2><div className="heroMeta">PESSOAS • COMÉRCIOS • OPORTUNIDADES • UMA CIDADE MAIS UNIDA</div><div className="script">Aqui<br/>tem gente real,<br/>tem história!</div></section>
+    <NationalBanner/>
     {Composer({text:postText,setText:setPostText,onPublish:()=>publishPost()})}
     <div className="sectionTitle"><h2>Mural da sua cidade</h2><button onClick={()=>setActive('Mural')}>Ver tudo →</button></div>
-    {posts.length?<div className="feed">{posts.slice(0,8).map(p=>PostCard({post:p}))}</div>:<Empty title="O mural da sua cidade está começando.">Seja a primeira pessoa a publicar no DAQUITOP.</Empty>}
+    {posts.length?<div className="feed">{posts.slice(0,8).map(p=>PostCard({post:p}))}</div>:<Empty title="O mural da sua cidade está começando.">Seja a primeira pessoa a publicar no CIDARANK.</Empty>}
   </>}
 
-  function MuralScreen(){return <><PageHeader title="Mural" subtitle={`Tudo que está acontecendo em ${cityLabel}.`}/>{Composer({text:postText,setText:setPostText,onPublish:()=>publishPost()})}{posts.length?<div className="feed">{posts.map(p=>PostCard({post:p}))}</div>:<Empty title="Ainda não há publicações.">Publique a primeira novidade da cidade.</Empty>}</>}
+  function MuralScreen(){return <><NationalBanner compact/><PageHeader title="Mural" subtitle={`Tudo que está acontecendo em ${cityLabel}.`}/>{Composer({text:postText,setText:setPostText,onPublish:()=>publishPost()})}{posts.length?<div className="feed">{posts.map(p=>PostCard({post:p}))}</div>:<Empty title="Ainda não há publicações.">Publique a primeira novidade da cidade.</Empty>}</>}
 
   function PopularScreen(){
     const rank=competitionRanking(competitionType); const currentVote=myVote(competitionType);
@@ -613,7 +742,57 @@ export default function Home(){
     for(const m of daquitop_messages){const other=m.sender_id===session.user.id?m.recipient_id:m.sender_id;const prev=conversations[other];if(!prev||new Date(m.created_at)>new Date(prev.created_at))conversations[other]=m}
     const convoIds=Object.keys(conversations).sort((a,b)=>new Date(conversations[b].created_at)-new Date(conversations[a].created_at));
     const chatMessages=selectedChat?daquitop_messages.filter(m=>(m.sender_id===session.user.id&&m.recipient_id===selectedChat.id)||(m.sender_id===selectedChat.id&&m.recipient_id===session.user.id)):[];
-    return <><PageHeader title="Mensagens" subtitle="Conversas privadas entre pessoas do DAQUITOP."/><div className="daquitop_messagesLayout"><div className="conversationList"><h3>Conversas</h3>{convoIds.map(id=>{const p=messagePeople[id]||{};const last=conversations[id];const unread=last.recipient_id===session.user.id&&!last.read_at;return <button className={`conversation ${selectedChat?.id===id?'active':''}`} key={id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username||'Usuário'}</b><small>{last.content.slice(0,50)}</small></div>{unread&&<i/>}</button>})}{!convoIds.length&&<p className="muted">Nenhuma conversa ainda.</p>}<h3>Começar conversa</h3>{people.filter(p=>p.id!==session.user.id).slice(0,12).map(p=><button className="conversation" key={p.id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username}</b><small>@{p.username}</small></div></button>)}</div><div className="chatPanel">{selectedChat?<><div className="chatHead"><Avatar profile={selectedChat}/><div><b>{selectedChat.full_name||selectedChat.username}</b><small>@{selectedChat.username}</small></div></div><div className="chatMessages">{chatMessages.map(m=><div className={`bubble ${m.sender_id===session.user.id?'mine':''}`} key={m.id}>{m.content}<small>{fmtDate(m.created_at)}</small></div>)}</div><form className="chatInput" onSubmit={sendMessage}><input value={messageText} onChange={e=>setMessageText(e.target.value)} placeholder="Digite uma mensagem..."/><button>Enviar</button></form></>:<Empty title="Selecione uma conversa.">Você também pode abrir o perfil de alguém e clicar em Mensagem.</Empty>}</div></div></>
+    return <><PageHeader title="Mensagens" subtitle="Conversas privadas entre pessoas do CIDARANK."/><div className="daquitop_messagesLayout"><div className="conversationList"><h3>Conversas</h3>{convoIds.map(id=>{const p=messagePeople[id]||{};const last=conversations[id];const unread=last.recipient_id===session.user.id&&!last.read_at;return <button className={`conversation ${selectedChat?.id===id?'active':''}`} key={id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username||'Usuário'}</b><small>{last.content.slice(0,50)}</small></div>{unread&&<i/>}</button>})}{!convoIds.length&&<p className="muted">Nenhuma conversa ainda.</p>}<h3>Começar conversa</h3>{people.filter(p=>p.id!==session.user.id).slice(0,12).map(p=><button className="conversation" key={p.id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username}</b><small>@{p.username}</small></div></button>)}</div><div className="chatPanel">{selectedChat?<><div className="chatHead"><Avatar profile={selectedChat}/><div><b>{selectedChat.full_name||selectedChat.username}</b><small>@{selectedChat.username}</small></div></div><div className="chatMessages">{chatMessages.map(m=><div className={`bubble ${m.sender_id===session.user.id?'mine':''}`} key={m.id}>{m.content}<small>{fmtDate(m.created_at)}</small></div>)}</div><form className="chatInput" onSubmit={sendMessage}><input value={messageText} onChange={e=>setMessageText(e.target.value)} placeholder="Digite uma mensagem..."/><button>Enviar</button></form></>:<Empty title="Selecione uma conversa.">Você também pode abrir o perfil de alguém e clicar em Mensagem.</Empty>}</div></div></>
+  }
+
+  function OwnerPanelScreen(){
+    if(!isAdmin)return <Empty title="Acesso restrito.">Somente o dono e administradores autorizados podem acessar esta área.</Empty>;
+    const stats=[
+      ['Pessoas',ownerUsers.length],
+      ['Comércios',ownerBusinesses.length],
+      ['Publicações',ownerPosts.length],
+      ['Chamados',ownerTickets.length]
+    ];
+    return <>
+      <PageHeader title="Painel do Dono" subtitle="Controle nacional do CIDARANK. Apenas dono e administradores autorizados." actions={<button className="primaryBtn" onClick={loadOwnerData}>{ownerBusy?'Atualizando...':'Atualizar dados'}</button>}/>
+      <div className="ownerTabs">
+        {[
+          ['dashboard','Dashboard'],['banner','Banner nacional'],['usuarios','Usuários'],['moderacao','Moderação'],['suporte','Suporte']
+        ].map(([id,label])=><button key={id} className={ownerTab===id?'active':''} onClick={()=>setOwnerTab(id)}>{label}</button>)}
+      </div>
+
+      {ownerTab==='dashboard'&&<>
+        <div className="ownerStats">{stats.map(([label,value])=><div className="ownerStat" key={label}><strong>{value}</strong><span>{label}</span></div>)}</div>
+        <div className="twoCol">
+          <div className="panel"><h2>Controle do site</h2><p className="muted">Sua conta está reconhecida como <b>DONO</b>. O banner nacional e as ferramentas administrativas ficam disponíveis apenas aqui.</p><div className="ownerIdentity"><Avatar profile={profile} name={displayName} size="lg"/><div><b>{displayName}</b><small>{session?.user?.email}</small><span>♛ DONO DO CIDARANK</span></div></div></div>
+          <div className="panel"><h2>Resumo</h2><p className="muted">Perfis verificados: {ownerUsers.filter(x=>x.verified).length}</p><p className="muted">Contas suspensas: {ownerUsers.filter(x=>x.is_suspended).length}</p><p className="muted">Chamados abertos/em análise: {ownerTickets.filter(x=>x.status!=='resolvido').length}</p><p className="muted">Administradores: {ownerUsers.filter(x=>String(x.role||'').toLowerCase()==='admin').length}</p></div>
+        </div>
+      </>}
+
+      {ownerTab==='banner'&&<div className="panel">
+        <h2>Banner nacional do CIDARANK</h2>
+        <p className="muted">Esta imagem aparece na entrada do mural para usuários de qualquer cidade do Brasil. Somente o dono pode trocar.</p>
+        <div className="ownerBannerPreview"><img src={siteBanner||'/cidarank-national-banner.png'} alt="Banner nacional atual"/></div>
+        {isOwner?<label className="primaryBtn ownerUpload">Trocar imagem nacional<input type="file" hidden accept="image/*" disabled={ownerBusy} onChange={e=>changeNationalBanner(e.target.files?.[0])}/></label>:<div className="infoBanner">Administradores podem visualizar, mas somente o dono pode trocar o banner nacional.</div>}
+      </div>}
+
+      {ownerTab==='usuarios'&&<div className="panel">
+        <div className="panelTitle"><div><h2>Gerenciar usuários</h2><p>Verifique perfis, conceda acesso de administrador ou suspenda contas.</p></div></div>
+        <div className="ownerUserList">{ownerUsers.map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'} {u.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>}</b><small>@{u.username||'semusuario'} • {u.city||'Sem cidade'} - {u.state||''}</small><small>{String(u.role||'user').toUpperCase()} {u.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleUser(u,'verified')}>{u.verified?'Remover verificação':'Verificar'}</button>{isOwner&&u.id!==session.user.id&&<button onClick={()=>ownerToggleUser(u,'role')}>{String(u.role||'').toLowerCase()==='admin'?'Remover admin':'Tornar admin'}</button>}<button className={u.is_suspended?'safeBtn':'dangerBtn'} disabled={u.id===session.user.id} onClick={()=>ownerToggleUser(u,'is_suspended')}>{u.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div>
+      </div>}
+
+      {ownerTab==='moderacao'&&<div className="panel">
+        <h2>Moderação de publicações</h2>
+        <p className="muted">As publicações mais recentes de todas as cidades aparecem aqui.</p>
+        <div className="ownerPostList">{ownerPosts.map(p=><div className="ownerPostRow" key={p.id}><div className="grow"><b>{p.city||'Cidade'} - {p.state||''}</b><p>{p.content||'(publicação com imagem)'}</p><small>{fmtDate(p.created_at)}</small></div><button className="dangerBtn" onClick={()=>ownerDeletePost(p)}>Excluir</button></div>)}</div>
+      </div>}
+
+      {ownerTab==='suporte'&&<div className="panel">
+        <h2>Chamados e denúncias</h2>
+        {!ownerTickets.length&&<p className="muted">Nenhum chamado recebido.</p>}
+        {ownerTickets.map(t=>{const person=messagePeople[t.user_id]||{};return <div className="ownerTicket" key={t.id}><div className="ownerTicketHead"><div><b>{t.subject}</b><small>{person.full_name||person.username||'Usuário'} • {t.category} • {fmtDate(t.created_at)}</small></div><span className={`status ${t.status}`}>{String(t.status||'aberto').replace('_',' ')}</span></div><p>{t.message}</p>{t.image_url&&<img src={t.image_url} alt="Anexo do chamado"/>}<textarea rows={3} value={ownerReply[t.id]??t.admin_response??''} onChange={e=>setOwnerReply(v=>({...v,[t.id]:e.target.value}))} placeholder="Resposta do dono/admin..."/><div className="ownerActions"><button onClick={()=>ownerReplyTicket(t,'em_analise')}>Salvar / Em análise</button><button className="safeBtn" onClick={()=>ownerReplyTicket(t,'resolvido')}>Responder e resolver</button></div></div>})}
+      </div>}
+    </>
   }
 
   function SupportScreen(){return <><PageHeader title="Suporte" subtitle="Envie sua dúvida, problema ou denúncia. Você acompanha o status por aqui."/><div className="twoCol"><form className="panel stackForm" onSubmit={sendSupport}><h2>Novo chamado</h2><label>Categoria<select value={supportForm.category} onChange={e=>setSupportForm({...supportForm,category:e.target.value})}><option value="duvida">Dúvida</option><option value="problema">Problema técnico</option><option value="denuncia">Denúncia</option><option value="comercio">Comércio</option><option value="outros">Outros</option></select></label><label>Assunto<input required value={supportForm.subject} onChange={e=>setSupportForm({...supportForm,subject:e.target.value})}/></label><label>Descrição<textarea required rows={7} value={supportForm.message} onChange={e=>setSupportForm({...supportForm,message:e.target.value})}/></label><label>Imagem opcional<input type="file" accept="image/*" onChange={e=>setSupportForm({...supportForm,image:e.target.files?.[0]||null})}/></label><button className="primaryBtn" disabled={busy}>Enviar chamado</button></form><div className="panel"><h2>Meus chamados</h2>{tickets.length?tickets.map(t=><div className="ticket" key={t.id}><div><b>{t.subject}</b><span className={`status ${t.status}`}>{t.status.replace('_',' ')}</span></div><p>{t.message}</p>{t.image_url&&<img src={t.image_url} alt="Anexo"/>}{t.admin_response&&<div className="adminReply"><b>Resposta do suporte:</b><p>{t.admin_response}</p></div>}<small>{fmtDate(t.created_at)}</small></div>):<p className="muted">Você ainda não abriu nenhum chamado.</p>}</div></div></>}
@@ -628,12 +807,13 @@ export default function Home(){
       case 'Perfil': return ProfileScreen();
       case 'Configurações': return SettingsScreen();
       case 'Suporte': return SupportScreen();
+      case 'Painel do Dono': return OwnerPanelScreen();
       default:return HomeScreen();
     }
   }
 
   return <main className="shell">
-    <aside className="sidebar"><div className="brand"><div className="brandMark">◆</div><div><b>DAQUI<span>TOP</span></b><small>CIDADES QUE CONECTAM</small></div></div><nav>{MENU.map(([ic,label])=><button key={label} onClick={()=>{setActive(label);if(label==='Perfil')setSelectedProfile(profile);if(label==='Comércios')setSelectedBusiness(null)}} className={active===label?'active':''}><i>{ic}</i><span>{label}</span></button>)}</nav><div className="elite"><div className="crown">♛</div><b>FAÇA PARTE<br/><span>DA ELITE</span></b><p>Conquiste seu espaço e seja destaque na sua cidade.</p><button onClick={()=>setActive('Populares')}>VER RANKINGS →</button></div><div className="miniCity">⌂ <div><b>DAQUITOP</b><small>Mais que uma rede, uma cidade viva.</small></div></div></aside>
+    <aside className="sidebar"><div className="brand"><div className="brandMark">◆</div><div><b>CIDA<span>RANK</span></b><small>CIDADES QUE CONECTAM</small></div></div><nav>{menuItems.map(([ic,label])=><button key={label} onClick={()=>{setActive(label);if(label==='Perfil')setSelectedProfile(profile);if(label==='Comércios')setSelectedBusiness(null)}} className={active===label?'active':''}><i>{ic}</i><span>{label}</span></button>)}</nav><div className="elite"><div className="crown">♛</div><b>FAÇA PARTE<br/><span>DA ELITE</span></b><p>Conquiste seu espaço e seja destaque na sua cidade.</p><button onClick={()=>setActive('Populares')}>VER RANKINGS →</button></div><div className="miniCity">⌂ <div><b>CIDARANK</b><small>Mais que uma rede, uma cidade viva.</small></div></div></aside>
     <section className="mainCol"><header className="topbar"><div className="search">⌕ <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pesquisar pessoas, comércios..."/>{searchResults.length>0&&<div className="searchDrop">{searchResults.map((r,i)=><button key={`${r.kind}-${r.item.id}-${i}`} onClick={()=>{setSearch('');r.kind==='person'?openProfile(r.item):loadBusiness(r.item.id)}}><Avatar profile={r.kind==='person'?r.item:{avatar_url:r.item.logo_url}} name={r.label} size="xs"/><div><b>{r.label}</b><small>{r.kind==='person'?`@${r.item.username}`:r.item.category||'Comércio'}</small></div></button>)}</div>}</div><div className="city">⌖ {cityLabel}</div><div className="icons"><button title="Mensagens" onClick={()=>setActive('Mensagens')}>💬</button><button title="Perfil" onClick={openOwnProfile}><Avatar profile={profile} name={displayName} size="sm"/></button><b>{displayName}</b><button className="logout" onClick={logout}>Sair</button></div></header>{notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice('')}>×</button></div>}<div className="screenContent">{renderScreen()}</div></section>
     <aside className="rightCol"><div className="rankCard"><div className="rankTitle"><h3>TOP 3 PESSOAS</h3><button onClick={()=>setActive('Populares')}>Ver ranking →</button></div>{topPeople.length?topPeople.map((p,i)=><button className="rankRow" key={p.id} onClick={()=>openProfile(p)}><b className={`medal m${i+1}`}>{i+1}</b><Avatar profile={p}/><div><b>{p.full_name||p.username}</b><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></button>):<div className="rankEmpty">Ainda não há ranking nesta cidade.</div>}</div><div className="rankCard"><div className="rankTitle"><h3>TOP 3 COMÉRCIOS</h3><button onClick={()=>setActive('Comércios')}>Ver ranking →</button></div>{topBusinesses.length?topBusinesses.map((b,i)=><button className="rankRow" key={b.id} onClick={()=>loadBusiness(b.id)}><b className={`medal m${i+1}`}>{i+1}</b><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div><b>{b.name}</b><small>{b.category||'Comércio local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>):<div className="rankEmpty">Nenhum comércio ranqueado ainda.</div>}</div><div className="supportLocal">🛍️ <div><b>APOIE O COMÉRCIO LOCAL</b><small>COMPRE NA SUA CIDADE<br/>FORTALEÇA O COMÉRCIO LOCAL!</small></div><span>→</span></div><div className="weather"><div>📍 <b>{profile?.city}</b><small>{profile?.state}</small></div><button onClick={openOwnProfile}>👤 <b>{displayName}</b><small>@{profile?.username}</small></button></div><blockquote>“Cidades fortes são feitas por pessoas que acreditam no seu lugar.”</blockquote></aside>
   </main>

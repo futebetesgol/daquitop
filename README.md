@@ -1,4 +1,4 @@
-# DAQUITOP V4.0 — Atualização Profunda
+# CIDARANK V4.0 — Atualização Profunda
 
 Atualização baseada na V3.1 funcional, preservando login, cadastro, mural, curtidas, comentários, seguidores, comércio, avaliações, mensagens, suporte e competições.
 

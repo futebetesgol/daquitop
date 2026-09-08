@@ -1,0 +1,33 @@
+CIDARANK V5 - BANNER NACIONAL + PAINEL DO DONO
+
+O QUE FOI ADICIONADO
+- Banner nacional 1920x700 na Inicio e no Mural.
+- A imagem aprovada foi colocada em public/cidarank-national-banner.png.
+- Somente a conta do DONO pode trocar o banner nacional pelo site.
+- Menu "Painel do Dono" aparece automaticamente para a conta do dono.
+- Dashboard com quantidade de pessoas, comercios, publicacoes e chamados.
+- Gerenciamento de usuarios: verificar perfil, tornar/remover admin e suspender/reativar.
+- Moderacao de publicacoes: dono/admin pode excluir publicacoes.
+- Suporte: dono/admin pode responder chamados e marcar como em analise/resolvido.
+- Marca visual principal do menu trocada de DAQUITOP para CIDARANK.
+
+O QUE FOI PRESERVADO
+- Login e cadastro.
+- Supabase atual.
+- Mural e publicacoes.
+- Curtidas e comentarios.
+- Pessoas, seguir e perfis.
+- Comercios, avaliacoes e estrelas.
+- Mensagens.
+- Explorar cidade.
+- Ranking/competicoes que ja existiam.
+- Configuracoes e suporte do usuario.
+
+PASSO OBRIGATORIO NO SUPABASE
+1. Abra Supabase > SQL Editor.
+2. Cole TODO o conteudo do arquivo SUPABASE_CIDARANK_DONO.sql.
+3. Clique RUN.
+4. Depois envie esta versao do projeto ao GitHub/Vercel.
+
+OBSERVACAO
+As tabelas antigas continuam com os mesmos nomes internos (daquitop_...) para nao quebrar o banco atual. Isso e intencional. Na interface, o projeto aparece como CIDARANK.

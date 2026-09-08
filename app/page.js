@@ -524,13 +524,12 @@ export default function Home(){
 
   if(!session){
     return <main className="authPage">
-      <section className="authShowcase">
-        <div className="brand authBrand"><div className="brandMark">◆</div><div><b>DAQUI<span>TOP</span></b><small>CIDADES QUE CONECTAM</small></div></div>
-        <div className="authHeroText"><span>BEM-VINDO AO</span><h1>DAQUI<i>TOP</i></h1><h2>Sua cidade. Sua gente. Seu destaque.</h2><p>Entre para acompanhar o mural da sua cidade, participar dos rankings locais e descobrir os melhores comércios perto de você.</p></div>
+      <section className="authShowcase cidarankShowcase" aria-label="CIDARANK - rankings e destaques da cidade">
+        <img src="/cidarank-auth-showcase.png" alt="CIDARANK com ranking da semana, ranking do mês, ranking anual e destaque de estabelecimentos" className="cidarankShowcaseImage"/>
       </section>
       <section className="authPanel"><div className="authCard">
         <div className="authTabs"><button className={authMode==='login'?'active':''} onClick={()=>{setAuthMode('login');setAuthMessage('')}}>ENTRAR</button><button className={authMode==='signup'?'active':''} onClick={()=>{setAuthMode('signup');setAuthMessage('')}}>CRIAR CONTA</button></div>
-        <h2>{authMode==='login'?'Bem-vindo de volta':'Faça parte do DAQUITOP'}</h2><p className="authSubtitle">{authMode==='login'?'Acesse sua cidade e continue de onde parou.':'Crie seu perfil local em poucos passos.'}</p>
+        <h2>{authMode==='login'?'Bem-vindo ao CIDARANK':'Faça parte do CIDARANK'}</h2><p className="authSubtitle">{authMode==='login'?'Acesse sua conta e continue de onde parou.':'Crie seu perfil local em poucos passos.'}</p>
         <form onSubmit={handleAuth}>
           {authMode==='signup'&&<>
             <label>Nome completo<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="Seu nome"/></label>
@@ -542,7 +541,7 @@ export default function Home(){
           <label>E-mail<input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="voce@email.com"/></label>
           <label>Senha<input type="password" minLength={6} required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Mínimo 6 caracteres"/></label>
           {authMessage&&<div className="authMessage">{authMessage}</div>}
-          <button className="authSubmit" disabled={authBusy}>{authBusy?'AGUARDE...':authMode==='login'?'ENTRAR NO DAQUITOP':'CRIAR MINHA CONTA'}</button>
+          <button className="authSubmit" disabled={authBusy}>{authBusy?'AGUARDE...':authMode==='login'?'ENTRAR NO CIDARANK':'CRIAR MINHA CONTA'}</button>
         </form>
       </div></section>
     </main>

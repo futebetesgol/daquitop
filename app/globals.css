@@ -2,3 +2,11 @@
 
 /* V4.0 - Medalhas, troféus e publicação de comércio */
 .awardsGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:12px}.awardCard{display:flex;gap:12px;align-items:center;padding:14px;border:1px solid rgba(114,91,255,.35);border-radius:14px;background:linear-gradient(135deg,rgba(29,51,89,.75),rgba(31,15,68,.75))}.awardCard>span{font-size:30px;line-height:1}.awardCard div{display:flex;flex-direction:column;gap:3px}.awardCard b{font-size:14px}.awardCard small{color:#9fb2d2;font-size:12px}.businessComposer .actions button:first-of-type{max-width:260px}
+
+
+/* CIDARANK - visual exclusivo da entrada (login/cadastro). Restante do projeto preservado. */
+.cidarankShowcase{padding:0;background:#050d19;display:flex;align-items:stretch;justify-content:stretch;min-width:0}
+.cidarankShowcase:after{display:none!important}
+.cidarankShowcaseImage{width:100%;height:100vh;object-fit:cover;object-position:center;display:block}
+@media(max-width:980px){.cidarankShowcase{min-height:420px}.cidarankShowcaseImage{height:420px;object-position:center top}}
+@media(max-width:640px){.cidarankShowcase{display:none}}

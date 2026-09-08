@@ -1,3 +1,19 @@
+# DAQUITOP V3.1 — Correção de digitação e foco
+
+Esta versão mantém toda a V3.0 e corrige o problema em que os campos perdiam o foco a cada tecla.
+
+## Importante
+- Não há SQL novo para esta correção.
+- O banco V3.0 já aplicado deve permanecer como está.
+- Envie ao GitHub apenas `app`, `lib`, `next.config.js`, `package.json` e `README.md`.
+
+## Corrigido
+- Bio e campos de Configurações.
+- Publicação no Mural/Início.
+- Comentários.
+- Publicações de Comércio e Explorar Cidade.
+- Formulários de Mensagens e Suporte.
+
 # DAQUITOP V3.0 COMPLETA
 
 Atualização funcional do DAQUITOP mantendo o visual escuro azul/roxo/magenta da V2.1.

@@ -22,6 +22,15 @@ function cleanUsername(value=''){
 function safeName(name='arquivo'){
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9._-]/g,'-');
 }
+function locationKey(value=''){
+  return String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+}
+function cityKey(value=''){
+  return locationKey(value);
+}
+function stateKey(value=''){
+  return locationKey(value);
+}
 function sameCity(a,b){
   return String(a?.city||'').toLowerCase()===String(b?.city||'').toLowerCase() && String(a?.state||'').toLowerCase()===String(b?.state||'').toLowerCase();
 }

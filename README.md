@@ -1,21 +1,12 @@
-# CIDARANK V4.0 — Atualização Profunda
+# CIDARANK V6
 
-Atualização baseada na V3.1 funcional, preservando login, cadastro, mural, curtidas, comentários, seguidores, comércio, avaliações, mensagens, suporte e competições.
+Rede social local/nacional com rankings, comércios e administração.
 
-## O que muda na V4.0
-- Contexto de cidade reforçado com `city_key/state_key` no Supabase para pessoas, comércios, posts e competições.
-- Mural, populares, comércios e ranking carregados sempre pela cidade oficial do perfil.
-- Explorar Cidade busca dados reais da cidade visitada sem alterar a cidade de cadastro.
-- Perfil com Medalhas e Troféus dinâmicos: Top 1/2/3 Popular, líder do mês, líder do ano e Destaque Local.
-- Comércio pode publicar texto + foto de produto/comida/serviço.
-- Publicação do comércio usa logo do comércio quando houver.
-- Lista ampla de categorias comerciais, incluindo Restaurante, Padaria, Pizzaria e muitas outras.
-- Mensagens, suporte, avaliações e demais módulos da V3.1 permanecem.
-
-## Instalação
-1. Execute `supabase_v4_profunda.sql` no Supabase SQL Editor.
-2. Envie `app`, `lib`, `package.json`, `next.config.js` e `README.md` para o repositório GitHub.
+## Instalação da V6
+1. No Supabase, abra **SQL Editor** e execute `SUPABASE_CIDARANK_DONO_V6.sql`.
+2. Envie os arquivos desta pasta para a raiz do repositório GitHub.
 3. Aguarde o deploy do Vercel.
-4. Teste com duas contas em cidades diferentes e duas contas na mesma cidade.
+4. Entre com `cidarankk@gmail.com` para acessar **♛ Painel do Dono**.
 
-Status: EM TESTE até validar no Vercel/Supabase.
+## Painel do Dono
+Inclui visão geral, tempo real, usuários, moderação, comércios, rankings, suporte, equipe, banner, auditoria e saúde do sistema.

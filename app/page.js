@@ -7,7 +7,7 @@ const MENU = [
   ['⌂','Início'],['▣','Mural'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
 ];
 
-const OWNER_EMAIL = 'joaopedrorodriguesdasilvagomes@gmail.com';
+const OWNER_EMAIL = 'cidarankk@gmail.com';
 
 function isOwnerEmail(email=''){
   return String(email || '').trim().toLowerCase() === OWNER_EMAIL;
@@ -127,6 +127,16 @@ export default function Home(){
   const [ownerBusinesses,setOwnerBusinesses]=useState([]);
   const [ownerBusy,setOwnerBusy]=useState(false);
   const [ownerReply,setOwnerReply]=useState({});
+  const [ownerPresence,setOwnerPresence]=useState([]);
+  const [ownerLogs,setOwnerLogs]=useState([]);
+  const [ownerReports,setOwnerReports]=useState([]);
+  const [ownerVotes,setOwnerVotes]=useState([]);
+  const [ownerSearch,setOwnerSearch]=useState('');
+  const [ownerCityFilter,setOwnerCityFilter]=useState('');
+  const [ownerStateFilter,setOwnerStateFilter]=useState('');
+  const [ownerLiveEvents,setOwnerLiveEvents]=useState([]);
+  const [ownerRealtimeConnected,setOwnerRealtimeConnected]=useState(false);
+  const [ownerHealth,setOwnerHealth]=useState({database:'checking',auth:'ok',realtime:'checking',lastCheck:null});
 
   const [competitionType,setCompetitionType]=useState('month');
   const [competitionVotes,setCompetitionVotes]=useState([]);
@@ -168,6 +178,42 @@ export default function Home(){
   useEffect(()=>{
     if(session?.user?.id) bootstrap(session.user.id);
   },[session?.user?.id]);
+
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    let stopped=false;
+    async function heartbeat(){
+      if(stopped)return;
+      try{
+        await supabase.from('cidarank_user_presence').upsert({
+          user_id:session.user.id,
+          last_seen:new Date().toISOString(),
+          page:active,
+          city:profile?.city||null,
+          state:profile?.state||null
+        },{onConflict:'user_id'});
+      }catch{}
+    }
+    heartbeat();
+    const timer=setInterval(heartbeat,45000);
+    return()=>{stopped=true;clearInterval(timer)};
+  },[session?.user?.id,active,profile?.city,profile?.state]);
+
+  useEffect(()=>{
+    if(!isAdmin)return;
+    const channel=supabase.channel('cidarank-owner-live')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'},payload=>pushOwnerLive('Nova publicação',payload.new))
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'businesses'},payload=>pushOwnerLive('Novo comércio',payload.new))
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'daquitop_support_tickets'},payload=>pushOwnerLive('Novo chamado',payload.new))
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'profiles'},payload=>pushOwnerLive('Novo usuário',payload.new))
+      .subscribe(status=>setOwnerRealtimeConnected(status==='SUBSCRIBED'));
+    return()=>{supabase.removeChannel(channel);setOwnerRealtimeConnected(false)};
+  },[isAdmin]);
+
+  function pushOwnerLive(type,row){
+    setOwnerLiveEvents(v=>[{id:`${Date.now()}-${Math.random()}`,type,row,at:new Date().toISOString()},...v].slice(0,60));
+  }
 
   async function handleStateChange(e){
     const id=e.target.value;
@@ -321,31 +367,60 @@ export default function Home(){
 
   async function loadOwnerData(){
     const ownerNow=isOwnerEmail(session?.user?.email);
-    const adminNow=ownerNow || ['owner','admin'].includes(String(profile?.role||'').toLowerCase());
+    const adminNow=ownerNow || ['owner','admin','moderator'].includes(String(profile?.role||'').toLowerCase());
     if(!adminNow)return;
     setOwnerBusy(true);
     try{
-      const [u,t,p,b]=await Promise.all([
-        supabase.from('profiles').select('*').order('created_at',{ascending:false}).limit(500),
-        supabase.from('daquitop_support_tickets').select('*').order('created_at',{ascending:false}).limit(300),
-        supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(200),
-        supabase.from('businesses').select('*').order('created_at',{ascending:false}).limit(300)
+      const [u,t,p,b,pr,lg,rp,vt]=await Promise.all([
+        supabase.from('profiles').select('*').order('created_at',{ascending:false}).limit(1000),
+        supabase.from('daquitop_support_tickets').select('*').order('created_at',{ascending:false}).limit(500),
+        supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(500),
+        supabase.from('businesses').select('*').order('created_at',{ascending:false}).limit(500),
+        supabase.from('cidarank_user_presence').select('*').order('last_seen',{ascending:false}).limit(1000),
+        supabase.from('cidarank_admin_logs').select('*').order('created_at',{ascending:false}).limit(500),
+        supabase.from('cidarank_reports').select('*').order('created_at',{ascending:false}).limit(500),
+        supabase.from('daquitop_competition_votes').select('*').order('created_at',{ascending:false}).limit(2000)
       ]);
-      setOwnerUsers(u.data||[]);
-      setOwnerTickets(t.data||[]);
-      setOwnerPosts(p.data||[]);
-      setOwnerBusinesses(b.data||[]);
-      const userIds=[...new Set((t.data||[]).map(x=>x.user_id).filter(Boolean))];
+      setOwnerUsers(u.data||[]); setOwnerTickets(t.data||[]); setOwnerPosts(p.data||[]); setOwnerBusinesses(b.data||[]);
+      setOwnerPresence(pr.data||[]); setOwnerLogs(lg.data||[]); setOwnerReports(rp.data||[]); setOwnerVotes(vt.data||[]);
+      const userIds=[...new Set([...(t.data||[]).map(x=>x.user_id),...(lg.data||[]).flatMap(x=>[x.actor_id,x.target_user_id])].filter(Boolean))];
       if(userIds.length){
         const {data:ticketPeople}=await supabase.from('profiles').select('id,full_name,username,avatar_url').in('id',userIds);
         setMessagePeople(v=>({...v,...Object.fromEntries((ticketPeople||[]).map(x=>[x.id,x]))}));
       }
+      setOwnerHealth({database:'ok',auth:session?.user?'ok':'error',realtime:ownerRealtimeConnected?'ok':'waiting',lastCheck:new Date().toISOString()});
     }catch(e){
       console.error(e);
-      setNotice('O painel abriu, mas alguns dados administrativos não puderam ser carregados. Execute o SQL de instalação do painel.');
+      setOwnerHealth(v=>({...v,database:'error',lastCheck:new Date().toISOString()}));
+      setNotice('Alguns dados administrativos não puderam ser carregados. Execute o SQL da V6 no Supabase.');
     }
     setOwnerBusy(false);
   }
+
+  async function logAdminAction(action,targetType='system',targetId=null,details={}){
+    if(!isAdmin||!session?.user?.id)return;
+    try{await supabase.from('cidarank_admin_logs').insert({actor_id:session.user.id,action,target_type:targetType,target_id:targetId,details});}catch{}
+  }
+
+  async function ownerToggleBusiness(b,field){
+    if(!isAdmin||!b?.id)return;
+    const payload={updated_at:new Date().toISOString()};
+    if(field==='verified')payload.verified=!Boolean(b.verified);
+    if(field==='is_suspended')payload.is_suspended=!Boolean(b.is_suspended);
+    const {error}=await supabase.from('businesses').update(payload).eq('id',b.id);
+    if(error){alert(error.message);return}
+    await logAdminAction(`business_${field}`, 'business', b.id, payload);
+    await loadOwnerData();
+  }
+
+  async function ownerResolveReport(r,status='resolved'){
+    if(!isAdmin||!r?.id)return;
+    const {error}=await supabase.from('cidarank_reports').update({status,resolved_by:session.user.id,resolved_at:new Date().toISOString()}).eq('id',r.id);
+    if(error){alert(error.message);return}
+    await logAdminAction('report_status','report',r.id,{status});
+    await loadOwnerData();
+  }
+
 
   async function changeNationalBanner(file){
     if(!file || !isOwner)return;
@@ -360,6 +435,7 @@ export default function Home(){
       },{onConflict:'key'});
       if(error)throw error;
       setSiteBanner(url);
+      await logAdminAction('banner_updated','site','national_banner',{url});
       setNotice('Banner nacional do CIDARANK atualizado para todo o site.');
     }catch(e){
       alert(`Não foi possível trocar o banner: ${e.message}`);
@@ -379,6 +455,7 @@ export default function Home(){
     if(field==='role')payload.role=String(user.role||'').toLowerCase()==='admin'?'user':'admin';
     const {error}=await supabase.from('profiles').update(payload).eq('id',user.id);
     if(error){alert(`Não foi possível atualizar o usuário: ${error.message}`);return}
+    await logAdminAction(`user_${field}`,'user',user.id,payload);
     await loadOwnerData();
   }
 
@@ -387,6 +464,7 @@ export default function Home(){
     if(!confirm('Excluir esta publicação do CIDARANK?'))return;
     const {error}=await supabase.from('posts').delete().eq('id',post.id);
     if(error){alert(`Não foi possível excluir: ${error.message}`);return}
+    await logAdminAction('post_deleted','post',post.id,{city:post.city,state:post.state,content:post.content||''});
     await Promise.all([loadOwnerData(),loadPosts(profile.city,profile.state)]);
     setNotice('Publicação removida pelo painel do dono.');
   }
@@ -400,6 +478,7 @@ export default function Home(){
       updated_at:new Date().toISOString()
     }).eq('id',ticket.id);
     if(error){alert(`Não foi possível atualizar o chamado: ${error.message}`);return}
+    await logAdminAction('ticket_updated','ticket',ticket.id,{status});
     await loadOwnerData();
     setNotice('Chamado atualizado.');
   }
@@ -747,51 +826,48 @@ export default function Home(){
 
   function OwnerPanelScreen(){
     if(!isAdmin)return <Empty title="Acesso restrito.">Somente o dono e administradores autorizados podem acessar esta área.</Empty>;
-    const stats=[
-      ['Pessoas',ownerUsers.length],
-      ['Comércios',ownerBusinesses.length],
-      ['Publicações',ownerPosts.length],
-      ['Chamados',ownerTickets.length]
-    ];
+    const now=Date.now();
+    const onlineIds=new Set(ownerPresence.filter(x=>now-new Date(x.last_seen).getTime()<5*60*1000).map(x=>x.user_id));
+    const today=new Date(); today.setHours(0,0,0,0);
+    const todayCount=list=>list.filter(x=>new Date(x.created_at||0)>=today).length;
+    const filteredUsers=ownerUsers.filter(u=>{
+      const q=ownerSearch.trim().toLowerCase();
+      const text=`${u.full_name||''} ${u.username||''} ${u.city||''} ${u.state||''}`.toLowerCase();
+      return (!q||text.includes(q))&&(!ownerStateFilter||u.state===ownerStateFilter)&&(!ownerCityFilter||u.city===ownerCityFilter);
+    });
+    const statesAdmin=[...new Set(ownerUsers.map(x=>x.state).filter(Boolean))].sort();
+    const citiesAdmin=[...new Set(ownerUsers.filter(x=>!ownerStateFilter||x.state===ownerStateFilter).map(x=>x.city).filter(Boolean))].sort();
+    const stats=[['Online agora',onlineIds.size],['Usuários',ownerUsers.length],['Cadastros hoje',todayCount(ownerUsers)],['Publicações hoje',todayCount(ownerPosts)],['Comércios',ownerBusinesses.length],['Chamados abertos',ownerTickets.filter(x=>x.status!=='resolvido').length],['Denúncias',ownerReports.filter(x=>!['resolved','dismissed'].includes(x.status)).length],['Admins',ownerUsers.filter(x=>['admin','moderator'].includes(String(x.role||'').toLowerCase())).length]];
+    const rankMap={}; for(const v of ownerVotes){const k=v.candidate_id||v.user_id||v.profile_id;if(k)rankMap[k]=(rankMap[k]||0)+1}
+    const topRank=Object.entries(rankMap).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([id,count])=>({user:ownerUsers.find(x=>x.id===id),count}));
     return <>
-      <PageHeader title="Painel do Dono" subtitle="Controle nacional do CIDARANK. Apenas dono e administradores autorizados." actions={<button className="primaryBtn" onClick={loadOwnerData}>{ownerBusy?'Atualizando...':'Atualizar dados'}</button>}/>
-      <div className="ownerTabs">
-        {[
-          ['dashboard','Dashboard'],['banner','Banner nacional'],['usuarios','Usuários'],['moderacao','Moderação'],['suporte','Suporte']
-        ].map(([id,label])=><button key={id} className={ownerTab===id?'active':''} onClick={()=>setOwnerTab(id)}>{label}</button>)}
-      </div>
+      <PageHeader title="Central do Dono" subtitle="Administração e monitoramento nacional do CIDARANK em tempo real." actions={<button className="primaryBtn" onClick={loadOwnerData}>{ownerBusy?'Atualizando...':'Atualizar agora'}</button>}/>
+      <div className="ownerRealtimeBar"><span className={ownerRealtimeConnected?'liveDot on':'liveDot'}></span><b>{ownerRealtimeConnected?'TEMPO REAL CONECTADO':'TEMPO REAL AGUARDANDO'}</b><small>Última leitura: {ownerHealth.lastCheck?fmtDate(ownerHealth.lastCheck):'—'}</small></div>
+      <div className="ownerTabs">{[
+        ['dashboard','📊 Visão geral'],['tempo','⚡ Tempo real'],['usuarios','👥 Usuários'],['moderacao','🛡️ Moderação'],['comercios','🏪 Comércios'],['rankings','🏆 Rankings'],['suporte','🎫 Suporte'],['equipe','👑 Equipe'],['banner','🖼️ Banner'],['auditoria','📜 Auditoria'],['sistema','⚙️ Sistema']
+      ].map(([id,label])=><button key={id} className={ownerTab===id?'active':''} onClick={()=>setOwnerTab(id)}>{label}</button>)}</div>
 
-      {ownerTab==='dashboard'&&<>
-        <div className="ownerStats">{stats.map(([label,value])=><div className="ownerStat" key={label}><strong>{value}</strong><span>{label}</span></div>)}</div>
-        <div className="twoCol">
-          <div className="panel"><h2>Controle do site</h2><p className="muted">Sua conta está reconhecida como <b>DONO</b>. O banner nacional e as ferramentas administrativas ficam disponíveis apenas aqui.</p><div className="ownerIdentity"><Avatar profile={profile} name={displayName} size="lg"/><div><b>{displayName}</b><small>{session?.user?.email}</small><span>♛ DONO DO CIDARANK</span></div></div></div>
-          <div className="panel"><h2>Resumo</h2><p className="muted">Perfis verificados: {ownerUsers.filter(x=>x.verified).length}</p><p className="muted">Contas suspensas: {ownerUsers.filter(x=>x.is_suspended).length}</p><p className="muted">Chamados abertos/em análise: {ownerTickets.filter(x=>x.status!=='resolvido').length}</p><p className="muted">Administradores: {ownerUsers.filter(x=>String(x.role||'').toLowerCase()==='admin').length}</p></div>
-        </div>
-      </>}
+      {ownerTab==='dashboard'&&<><div className="ownerStats deep">{stats.map(([label,value])=><div className="ownerStat" key={label}><strong>{value}</strong><span>{label}</span></div>)}</div><div className="adminGrid"><div className="panel"><h2>Conta proprietária</h2><div className="ownerIdentity"><Avatar profile={profile} name={displayName} size="lg"/><div><b>{displayName}</b><small>{session?.user?.email}</small><span>{isOwner?'♛ DONO PRINCIPAL':'ADMINISTRADOR'}</span></div></div><p className="muted">O dono principal não pode ser removido por administradores.</p></div><div className="panel"><h2>Alertas</h2><div className="healthLine"><span>Contas suspensas</span><b>{ownerUsers.filter(x=>x.is_suspended).length}</b></div><div className="healthLine"><span>Comércios suspensos</span><b>{ownerBusinesses.filter(x=>x.is_suspended).length}</b></div><div className="healthLine"><span>Chamados pendentes</span><b>{ownerTickets.filter(x=>x.status!=='resolvido').length}</b></div><div className="healthLine"><span>Denúncias pendentes</span><b>{ownerReports.filter(x=>!['resolved','dismissed'].includes(x.status)).length}</b></div></div><div className="panel adminWide"><h2>Atividade administrativa recente</h2>{ownerLogs.slice(0,12).map(l=><div className="adminActivity" key={l.id}><b>{l.action}</b><span>{fmtDate(l.created_at)}</span><small>{l.target_type}{l.target_id?` • ${l.target_id}`:''}</small></div>)}{!ownerLogs.length&&<p className="muted">Nenhuma ação administrativa registrada ainda.</p>}</div></div></>}
 
-      {ownerTab==='banner'&&<div className="panel">
-        <h2>Banner nacional do CIDARANK</h2>
-        <p className="muted">Esta imagem aparece na entrada do mural para usuários de qualquer cidade do Brasil. Somente o dono pode trocar.</p>
-        <div className="ownerBannerPreview"><img src={siteBanner||'/cidarank-national-banner.png'} alt="Banner nacional atual"/></div>
-        {isOwner?<label className="primaryBtn ownerUpload">Trocar imagem nacional<input type="file" hidden accept="image/*" disabled={ownerBusy} onChange={e=>changeNationalBanner(e.target.files?.[0])}/></label>:<div className="infoBanner">Administradores podem visualizar, mas somente o dono pode trocar o banner nacional.</div>}
-      </div>}
+      {ownerTab==='tempo'&&<div className="adminGrid"><div className="panel"><h2>Usuários online agora</h2>{ownerPresence.filter(x=>onlineIds.has(x.user_id)).slice(0,50).map(x=>{const u=ownerUsers.find(y=>y.id===x.user_id)||{};return <div className="listRow" key={x.user_id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'}</b><small>{x.page||'CIDARANK'} • {x.city||''} {x.state||''}</small></div><span className="onlineBadge">ONLINE</span></div>})}{!onlineIds.size&&<p className="muted">Nenhum usuário ativo nos últimos 5 minutos.</p>}</div><div className="panel"><h2>Eventos ao vivo</h2>{ownerLiveEvents.map(e=><div className="liveEvent" key={e.id}><b>{e.type}</b><small>{fmtDate(e.at)}</small><span>{e.row?.city||''} {e.row?.state||''}</span></div>)}{!ownerLiveEvents.length&&<p className="muted">Aguardando novos eventos do site.</p>}</div></div>}
 
-      {ownerTab==='usuarios'&&<div className="panel">
-        <div className="panelTitle"><div><h2>Gerenciar usuários</h2><p>Verifique perfis, conceda acesso de administrador ou suspenda contas.</p></div></div>
-        <div className="ownerUserList">{ownerUsers.map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'} {u.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>}</b><small>@{u.username||'semusuario'} • {u.city||'Sem cidade'} - {u.state||''}</small><small>{String(u.role||'user').toUpperCase()} {u.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleUser(u,'verified')}>{u.verified?'Remover verificação':'Verificar'}</button>{isOwner&&u.id!==session.user.id&&<button onClick={()=>ownerToggleUser(u,'role')}>{String(u.role||'').toLowerCase()==='admin'?'Remover admin':'Tornar admin'}</button>}<button className={u.is_suspended?'safeBtn':'dangerBtn'} disabled={u.id===session.user.id} onClick={()=>ownerToggleUser(u,'is_suspended')}>{u.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div>
-      </div>}
+      {ownerTab==='usuarios'&&<div className="panel"><div className="adminFilters"><input placeholder="Pesquisar nome, @usuário ou cidade" value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)}/><select value={ownerStateFilter} onChange={e=>{setOwnerStateFilter(e.target.value);setOwnerCityFilter('')}}><option value="">Todos os estados</option>{statesAdmin.map(x=><option key={x}>{x}</option>)}</select><select value={ownerCityFilter} onChange={e=>setOwnerCityFilter(e.target.value)}><option value="">Todas as cidades</option>{citiesAdmin.map(x=><option key={x}>{x}</option>)}</select></div><p className="muted">{filteredUsers.length} usuário(s) encontrado(s).</p><div className="ownerUserList">{filteredUsers.map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'} {u.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>} {onlineIds.has(u.id)&&<span className="onlineBadge">ONLINE</span>}</b><small>@{u.username||'semusuario'} • {u.city||'Sem cidade'} - {u.state||''}</small><small>{String(u.role||'user').toUpperCase()} {u.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleUser(u,'verified')}>{u.verified?'Remover verificação':'Verificar'}</button>{isOwner&&u.id!==session.user.id&&<button onClick={()=>ownerToggleUser(u,'role')}>{String(u.role||'').toLowerCase()==='admin'?'Remover admin':'Tornar admin'}</button>}<button className={u.is_suspended?'safeBtn':'dangerBtn'} disabled={u.id===session.user.id||isOwnerEmail(u.email)} onClick={()=>ownerToggleUser(u,'is_suspended')}>{u.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div></div>}
 
-      {ownerTab==='moderacao'&&<div className="panel">
-        <h2>Moderação de publicações</h2>
-        <p className="muted">As publicações mais recentes de todas as cidades aparecem aqui.</p>
-        <div className="ownerPostList">{ownerPosts.map(p=><div className="ownerPostRow" key={p.id}><div className="grow"><b>{p.city||'Cidade'} - {p.state||''}</b><p>{p.content||'(publicação com imagem)'}</p><small>{fmtDate(p.created_at)}</small></div><button className="dangerBtn" onClick={()=>ownerDeletePost(p)}>Excluir</button></div>)}</div>
-      </div>}
+      {ownerTab==='moderacao'&&<div className="adminGrid"><div className="panel"><h2>Publicações recentes</h2><div className="ownerPostList">{ownerPosts.map(p=><div className="ownerPostRow" key={p.id}><div className="grow"><b>{p.city||'Cidade'} - {p.state||''}</b><p>{p.content||'(publicação com imagem)'}</p><small>{fmtDate(p.created_at)}</small></div><button className="dangerBtn" onClick={()=>ownerDeletePost(p)}>Excluir</button></div>)}</div></div><div className="panel"><h2>Fila de denúncias</h2>{ownerReports.map(r=><div className="reportRow" key={r.id}><b>{r.reason||r.category||'Denúncia'}</b><small>{r.target_type} • {fmtDate(r.created_at)}</small><p>{r.details||'Sem detalhes.'}</p><div className="ownerActions"><button className="safeBtn" onClick={()=>ownerResolveReport(r,'resolved')}>Resolver</button><button onClick={()=>ownerResolveReport(r,'dismissed')}>Arquivar</button></div></div>)}{!ownerReports.length&&<p className="muted">Nenhuma denúncia registrada.</p>}</div></div>}
 
-      {ownerTab==='suporte'&&<div className="panel">
-        <h2>Chamados e denúncias</h2>
-        {!ownerTickets.length&&<p className="muted">Nenhum chamado recebido.</p>}
-        {ownerTickets.map(t=>{const person=messagePeople[t.user_id]||{};return <div className="ownerTicket" key={t.id}><div className="ownerTicketHead"><div><b>{t.subject}</b><small>{person.full_name||person.username||'Usuário'} • {t.category} • {fmtDate(t.created_at)}</small></div><span className={`status ${t.status}`}>{String(t.status||'aberto').replace('_',' ')}</span></div><p>{t.message}</p>{t.image_url&&<img src={t.image_url} alt="Anexo do chamado"/>}<textarea rows={3} value={ownerReply[t.id]??t.admin_response??''} onChange={e=>setOwnerReply(v=>({...v,[t.id]:e.target.value}))} placeholder="Resposta do dono/admin..."/><div className="ownerActions"><button onClick={()=>ownerReplyTicket(t,'em_analise')}>Salvar / Em análise</button><button className="safeBtn" onClick={()=>ownerReplyTicket(t,'resolvido')}>Responder e resolver</button></div></div>})}
-      </div>}
+      {ownerTab==='comercios'&&<div className="panel"><h2>Gerenciamento de comércios</h2><div className="ownerUserList">{ownerBusinesses.map(b=><div className="ownerUserRow" key={b.id}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name} {b.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>}</b><small>{b.category||'Comércio'} • {b.city||''} - {b.state||''}</small><small>★ {Number(b.rating_average||0).toFixed(1)} • {b.reviews_count||0} avaliações {b.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleBusiness(b,'verified')}>{b.verified?'Remover selo':'Verificar'}</button><button className={b.is_suspended?'safeBtn':'dangerBtn'} onClick={()=>ownerToggleBusiness(b,'is_suspended')}>{b.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div></div>}
+
+      {ownerTab==='rankings'&&<div className="adminGrid"><div className="panel"><h2>Ranking monitorado</h2><p className="muted">Contagem real dos registros de voto disponíveis no banco. O painel não altera posições manualmente.</p>{topRank.map((r,i)=><div className="listRow" key={r.user?.id||i}><b>#{i+1}</b><Avatar profile={r.user||{}}/><div className="grow"><b>{r.user?.full_name||r.user?.username||'Usuário'}</b><small>{r.user?.city||''} - {r.user?.state||''}</small></div><strong>{r.count}</strong></div>)}{!topRank.length&&<p className="muted">Ainda não há votos suficientes.</p>}</div><div className="panel"><h2>Antifraude básico</h2><p className="muted">Sinais para revisão humana.</p><div className="healthLine"><span>Total de votos carregados</span><b>{ownerVotes.length}</b></div><div className="healthLine"><span>Usuários com conta nova hoje</span><b>{todayCount(ownerUsers)}</b></div><div className="healthLine"><span>Contas suspensas</span><b>{ownerUsers.filter(x=>x.is_suspended).length}</b></div><p className="muted">A próxima etapa pode adicionar regras automáticas de velocidade de voto, múltiplas contas e padrões suspeitos.</p></div></div>}
+
+      {ownerTab==='suporte'&&<div className="panel"><h2>Chamados e denúncias</h2>{ownerTickets.map(t=>{const person=messagePeople[t.user_id]||{};return <div className="ownerTicket" key={t.id}><div className="ownerTicketHead"><div><b>{t.subject}</b><small>{person.full_name||person.username||'Usuário'} • {t.category} • {fmtDate(t.created_at)}</small></div><span className={`status ${t.status}`}>{String(t.status||'aberto').replace('_',' ')}</span></div><p>{t.message}</p>{t.image_url&&<img src={t.image_url} alt="Anexo do chamado"/>}<textarea rows={3} value={ownerReply[t.id]??t.admin_response??''} onChange={e=>setOwnerReply(v=>({...v,[t.id]:e.target.value}))} placeholder="Resposta do dono/admin..."/><div className="ownerActions"><button onClick={()=>ownerReplyTicket(t,'em_analise')}>Salvar / Em análise</button><button className="safeBtn" onClick={()=>ownerReplyTicket(t,'resolvido')}>Responder e resolver</button></div></div>})}{!ownerTickets.length&&<p className="muted">Nenhum chamado recebido.</p>}</div>}
+
+      {ownerTab==='equipe'&&<div className="panel"><h2>Equipe administrativa</h2><p className="muted">Somente o dono principal pode conceder ou remover acesso de administrador.</p>{ownerUsers.filter(x=>['admin','moderator'].includes(String(x.role||'').toLowerCase())||x.id===session.user.id).map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username}</b><small>@{u.username||''} • {u.id===session.user.id&&isOwner?'DONO PRINCIPAL':String(u.role||'admin').toUpperCase()}</small></div>{isOwner&&u.id!==session.user.id&&<button className="dangerBtn" onClick={()=>ownerToggleUser(u,'role')}>Remover admin</button>}</div>)}</div>}
+
+      {ownerTab==='banner'&&<div className="panel"><h2>Banner nacional do CIDARANK</h2><p className="muted">A imagem é nacional e somente o dono principal pode trocar.</p><div className="ownerBannerPreview"><img src={siteBanner||'/cidarank-national-banner.png'} alt="Banner nacional atual"/></div>{isOwner?<label className="primaryBtn ownerUpload">Trocar imagem nacional<input type="file" hidden accept="image/*" disabled={ownerBusy} onChange={e=>changeNationalBanner(e.target.files?.[0])}/></label>:<div className="infoBanner">Apenas o dono pode trocar o banner.</div>}</div>}
+
+      {ownerTab==='auditoria'&&<div className="panel"><h2>Histórico administrativo</h2><p className="muted">Registro de ações importantes feitas pelo dono e administradores.</p>{ownerLogs.map(l=>{const actor=messagePeople[l.actor_id]||ownerUsers.find(x=>x.id===l.actor_id)||{};return <div className="auditRow" key={l.id}><div><b>{l.action}</b><span>{actor.full_name||actor.username||'Administrador'}</span></div><small>{l.target_type}{l.target_id?` • ${l.target_id}`:''} • {fmtDate(l.created_at)}</small></div>})}{!ownerLogs.length&&<p className="muted">Nenhum registro ainda.</p>}</div>}
+
+      {ownerTab==='sistema'&&<div className="adminGrid"><div className="panel"><h2>Saúde do sistema</h2><div className="healthLine"><span>Banco de dados</span><b className={ownerHealth.database==='ok'?'healthOk':'healthWarn'}>{ownerHealth.database==='ok'?'OPERACIONAL':'VERIFICAR'}</b></div><div className="healthLine"><span>Autenticação</span><b className={ownerHealth.auth==='ok'?'healthOk':'healthWarn'}>{ownerHealth.auth==='ok'?'OPERACIONAL':'VERIFICAR'}</b></div><div className="healthLine"><span>Tempo real</span><b className={ownerRealtimeConnected?'healthOk':'healthWarn'}>{ownerRealtimeConnected?'CONECTADO':'AGUARDANDO'}</b></div><div className="healthLine"><span>Última checagem</span><b>{ownerHealth.lastCheck?fmtDate(ownerHealth.lastCheck):'—'}</b></div></div><div className="panel"><h2>Regras de segurança</h2><p className="muted">✓ Dono principal protegido</p><p className="muted">✓ Banner restrito ao dono</p><p className="muted">✓ Ações administrativas registradas</p><p className="muted">✓ Suspensão de usuários e comércios</p><p className="muted">✓ RLS do Supabase para administração</p></div></div>}
     </>
   }
 

@@ -51,3 +51,16 @@
 .nationalMonitorBar>div{display:grid;gap:2px}.nationalMonitorBar b{font-size:14px}.nationalMonitorBar small{color:#8fa4c1}.nationalMonitorBar select{width:100%;border:1px solid #25344e;border-radius:10px;background:#091525;color:#fff;padding:11px}.nationalMonitorBar .secondaryBtn{margin:0;white-space:nowrap;height:42px}.scopeTitle{display:flex;align-items:center;gap:9px;margin:0 0 10px;color:#8fa5c5}.scopeTitle span{font-size:11px;font-weight:900;letter-spacing:.08em}.scopeTitle b{color:#dfeaff}.adminSearchOnly{margin-bottom:10px}.adminSearchOnly input{width:100%;box-sizing:border-box;border:1px solid #25344e;border-radius:10px;background:#091525;color:#fff;padding:11px}.rankingAdminHead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:4px 0 12px;padding:14px 16px;border:1px solid rgba(95,115,255,.18);border-radius:15px;background:#0a1628}.rankingAdminHead h2{margin:0}.rankingAdminHead p{margin:4px 0 0;color:#8fa4c1}.rankingAdminHead .segmented{flex-wrap:wrap}.ownerStats.deep{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
 @media(max-width:1100px){.nationalMonitorBar{grid-template-columns:1fr 1fr}.nationalMonitorBar>div{grid-column:1/-1}.rankingAdminHead{align-items:flex-start;flex-direction:column}}
 @media(max-width:640px){.nationalMonitorBar{grid-template-columns:1fr}.nationalMonitorBar>div{grid-column:auto}.rankingAdminHead .segmented{width:100%;display:grid;grid-template-columns:1fr 1fr 1fr}.rankingAdminHead .segmented button{padding:8px 5px;font-size:12px}}
+
+/* CIDARANK V6.2 - selos, equipe e seletores de ranking */
+.roleSeal{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:.35px;border:1px solid rgba(255,255,255,.14);vertical-align:middle;white-space:nowrap}
+.roleSeal.owner{background:rgba(255,193,7,.12);border-color:rgba(255,193,7,.42);color:#ffd95b}
+.roleSeal.admin{background:rgba(88,121,255,.13);border-color:rgba(88,121,255,.42);color:#aabaff}
+.roleSeal.user{background:rgba(35,211,154,.11);border-color:rgba(35,211,154,.32);color:#7aebc6}
+.roleSeal.business{background:rgba(228,72,219,.11);border-color:rgba(228,72,219,.34);color:#f29bec}
+.adminInviteBox{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:10px;margin:18px 0;padding:14px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02)}
+.adminInviteBox input{width:100%;min-height:44px}
+.segmented.wrap{flex-wrap:wrap;justify-content:flex-end}
+.rankingChooser{padding:12px 14px}
+.rankingChooser .segmented{justify-content:flex-start}
+@media(max-width:760px){.adminInviteBox{grid-template-columns:1fr}.segmented.wrap{justify-content:flex-start}}

@@ -4,13 +4,27 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const MENU = [
-  ['⌂','Início'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
+  ['⌂','Início'],['🏆','Ranking da Cidade'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
 ];
 
 const OWNER_EMAIL = 'cidarankk@gmail.com';
 
 function isOwnerEmail(email=''){
   return String(email || '').trim().toLowerCase() === OWNER_EMAIL;
+}
+
+function isInstitutionalOwner(p){
+  const role=String(p?.role||'').toLowerCase();
+  const username=String(p?.username||'').trim().toLowerCase();
+  return role==='owner' || username==='cidarank';
+}
+function sealTypeFor(p){
+  const role=String(p?.role||'').toLowerCase();
+  if(isInstitutionalOwner(p)) return 'owner';
+  if(role==='admin'||role==='moderator') return 'admin';
+  if(p?.account_type==='business') return 'business';
+  if(p?.verified) return 'verified';
+  return 'user';
 }
 
 const CATEGORIES = ['Restaurante','Pizzaria','Lanchonete','Hamburgueria','Padaria','Confeitaria','Açaiteria','Sorveteria','Bar','Cafeteria','Delivery','Mercado','Supermercado','Hortifruti','Farmácia','Academia','Salão de Beleza','Barbearia','Manicure / Estética','Loja de Roupas','Calçados','Eletrônicos','Informática','Celulares / Assistência','Móveis','Material de Construção','Autopeças','Oficina Mecânica','Lava-jato','Posto de Combustível','Pet Shop','Clínica','Dentista','Ótica','Papelaria','Hotel / Pousada','Turismo','Fotografia','Eventos','Educação','Serviços','Tecnologia','Construção','Automotivo','Lazer','Outros'];
@@ -107,7 +121,7 @@ export default function Home(){
   const [exploreState,setExploreState]=useState('');
   const [exploreCities,setExploreCities]=useState([]);
   const [exploreCity,setExploreCity]=useState('');
-  const [exploreData,setExploreData]=useState({posts:[],authors:{},postBusinesses:{},businesses:[],people:[]});
+  const [exploreData,setExploreData]=useState({posts:[],authors:{},postBusinesses:{},businesses:[],people:[],votes:[]});
   const [exploreBusy,setExploreBusy]=useState(false);
   const [explorePostText,setExplorePostText]=useState('');
 
@@ -142,6 +156,7 @@ export default function Home(){
   const [ownerReportStatus,setOwnerReportStatus]=useState('all');
   const [ownerGlobalSearch,setOwnerGlobalSearch]=useState('');
   const [popularView,setPopularView]=useState('city');
+  const [homeRankView,setHomeRankView]=useState('week');
   const [ownerLiveEvents,setOwnerLiveEvents]=useState([]);
   const [ownerRealtimeConnected,setOwnerRealtimeConnected]=useState(false);
   const [ownerHealth,setOwnerHealth]=useState({database:'checking',auth:'ok',realtime:'checking',lastCheck:null});
@@ -520,6 +535,7 @@ export default function Home(){
     const map={
       owner:['♛','DONO'],
       admin:['🛡','ADMIN'],
+      verified:['✓','VERIFICADO'],
       user:['●','USUÁRIO'],
       business:['🏪','ESTABELECIMENTO']
     };
@@ -665,18 +681,17 @@ export default function Home(){
     if(!person?.id||!person?.city||!person?.state){setProfileAwards([]);return}
     const ckey=cityKey(person.city), skey=stateKey(person.state);
     const [{data:cityPeople},{data:votes}]=await Promise.all([
-      supabase.from('profiles').select('id,followers_count').eq('city_key',ckey).eq('state_key',skey).order('followers_count',{ascending:false}).limit(100),
+      supabase.from('profiles').select('id,followers_count,role,username').eq('city_key',ckey).eq('state_key',skey).gt('followers_count',0).order('followers_count',{ascending:false}).limit(100),
       supabase.from('daquitop_competition_votes').select('*').eq('city_key',ckey).eq('state_key',skey)
     ]);
-    const awards=[]; const ranked=cityPeople||[]; const pos=ranked.findIndex(x=>x.id===person.id);
+    const awards=[]; const ranked=(cityPeople||[]).filter(x=>!isInstitutionalOwner(x)); const pos=ranked.findIndex(x=>x.id===person.id);
     if(pos===0&&ranked.length)awards.push({icon:'🥇',title:'TOP 1 Popular',text:'1º lugar em seguidores na cidade'});
     else if(pos===1)awards.push({icon:'🥈',title:'TOP 2 Popular',text:'2º lugar em seguidores na cidade'});
     else if(pos===2)awards.push({icon:'🥉',title:'TOP 3 Popular',text:'3º lugar em seguidores na cidade'});
+    const awardPeople=(cityPeople||[]).filter(x=>!isInstitutionalOwner(x));
     for(const type of ['week','month','year']){
-      const key=periodKey(type); const counts={};
-      (votes||[]).filter(v=>v.period_type===type&&v.period_key===key).forEach(v=>counts[v.candidate_id]=(counts[v.candidate_id]||0)+1);
-      const max=Math.max(0,...Object.values(counts));
-      if(max>0&&counts[person.id]===max){const meta=type==='week'?['🥇','Popular da Semana']:type==='month'?['🏆','Popular do Mês']:['👑','Popular do Ano'];awards.push({icon:meta[0],title:meta[1],text:`${counts[person.id]} voto(s) no período atual`});}
+      const r=rankFromData(type,awardPeople,votes||[]);
+      if(r[0]?.id===person.id){const meta=type==='week'?['🥇','Líder da Semana']:type==='month'?['🏆','Melhor do Mês']:['👑','Melhor do Ano'];const val=type==='week'?`${r[0].votes} voto(s)`:`${r[0].points} ponto(s)`;awards.push({icon:meta[0],title:meta[1],text:`1º lugar atual • ${val}`});}
     }
     if((person.followers_count||0)>=10)awards.push({icon:'⭐',title:'Destaque Local',text:'10 ou mais seguidores locais'});
     setProfileAwards(awards);
@@ -763,13 +778,14 @@ export default function Home(){
   async function explore(){
     if(!exploreCity||!exploreState)return;
     setExploreBusy(true);
-    const [{data:p},{data:b},{data:raw}]=await Promise.all([
-      supabase.from('profiles').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('followers_count',{ascending:false}).limit(50),
+    const [{data:p},{data:b},{data:raw},{data:votes}]=await Promise.all([
+      supabase.from('profiles').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('followers_count',{ascending:false}).limit(100),
       supabase.from('businesses').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('rating_average',{ascending:false}).limit(50),
-      supabase.from('posts').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('created_at',{ascending:false}).limit(30)
+      supabase.from('posts').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).order('created_at',{ascending:false}).limit(30),
+      supabase.from('daquitop_competition_votes').select('*').eq('city_key',cityKey(exploreCity)).eq('state_key',stateKey(exploreState)).limit(10000)
     ]);
     const h=await hydratePosts(raw||[]);
-    setExploreData({posts:h.list,authors:h.authors,postBusinesses:h.biz,businesses:b||[],people:(p||[]).filter(x=>x.account_type!=='business')});
+    setExploreData({posts:h.list,authors:h.authors,postBusinesses:h.biz,businesses:b||[],votes:votes||[],people:(p||[]).filter(x=>x.account_type!=='business'&&!isInstitutionalOwner(x))});
     setExploreBusy(false);
   }
 
@@ -802,7 +818,7 @@ export default function Home(){
     if(error)alert(error.message); else{await loadCompetitions(profile.city,profile.state);setNotice('Seu voto foi registrado. Você pode trocar o voto enquanto a competição estiver aberta.')}
   }
 
-  const topPeople=useMemo(()=>people.filter(p=>String(p.role||'').toLowerCase()!=='owner').sort((a,b)=>(b.followers_count||0)-(a.followers_count||0)).slice(0,3),[people]);
+  const topPeople=useMemo(()=>people.filter(p=>!isInstitutionalOwner(p)&&(p.followers_count||0)>0).sort((a,b)=>(b.followers_count||0)-(a.followers_count||0)).slice(0,3),[people]);
   const topBusinesses=useMemo(()=>[...businesses].sort((a,b)=>(Number(b.rating_average||0)-Number(a.rating_average||0)) || ((b.reviews_count||0)-(a.reviews_count||0))).slice(0,3),[businesses]);
 
   const searchResults=useMemo(()=>{
@@ -821,19 +837,42 @@ export default function Home(){
     return `${d.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
   }
   function periodKey(type){if(type==='week')return isoWeekKey();if(type==='month')return new Date().toISOString().slice(0,7);return String(new Date().getFullYear())}
-  function competitionRanking(type){
-    const eligible=people.filter(p=>String(p.role||'').toLowerCase()!=='owner');
+  function rankFromData(type, sourcePeople=people, sourceVotes=competitionVotes){
+    const eligible=(sourcePeople||[]).filter(p=>!isInstitutionalOwner(p));
+    const scale=[100,80,65,50,40,30,20,15,10,5];
+    const weekScores=(votes)=>{
+      const groups={};
+      for(const v of votes){
+        const k=v.period_key||isoWeekKey(new Date(v.created_at));
+        groups[k]??={}; groups[k][v.candidate_id]=(groups[k][v.candidate_id]||0)+1;
+      }
+      const points={};
+      Object.values(groups).forEach(g=>Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,10).forEach(([id],i)=>points[id]=(points[id]||0)+scale[i]));
+      return points;
+    };
     if(type==='week'){
-      const key=periodKey('week'),counts={}; competitionVotes.filter(v=>v.period_type==='week'&&v.period_key===key).forEach(v=>counts[v.candidate_id]=(counts[v.candidate_id]||0)+1);
-      return eligible.map(p=>({...p,votes:counts[p.id]||0,points:counts[p.id]||0})).sort((a,b)=>b.votes-a.votes||(b.followers_count||0)-(a.followers_count||0));
+      const key=periodKey('week'),counts={};
+      (sourceVotes||[]).filter(v=>v.period_type==='week'&&v.period_key===key).forEach(v=>counts[v.candidate_id]=(counts[v.candidate_id]||0)+1);
+      return eligible.map(p=>({...p,votes:counts[p.id]||0,points:counts[p.id]||0})).filter(p=>p.votes>0).sort((a,b)=>b.votes-a.votes||(b.followers_count||0)-(a.followers_count||0));
     }
     const now=new Date(), year=now.getFullYear(), month=now.getMonth();
-    const weekly=competitionVotes.filter(v=>v.period_type==='week'&&v.created_at&&new Date(v.created_at).getFullYear()===year&&(type==='year'||new Date(v.created_at).getMonth()===month));
-    const groups={}; for(const v of weekly){const k=v.period_key||isoWeekKey(new Date(v.created_at));groups[k]??={};groups[k][v.candidate_id]=(groups[k][v.candidate_id]||0)+1}
-    const points={}; const scale=[100,80,65,50,40,30,20,15,10,5];
-    Object.values(groups).forEach(g=>Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,10).forEach(([id],i)=>points[id]=(points[id]||0)+scale[i]));
-    return eligible.map(p=>({...p,votes:points[p.id]||0,points:points[p.id]||0})).sort((a,b)=>b.points-a.points||(b.followers_count||0)-(a.followers_count||0));
+    const validWeeks=(sourceVotes||[]).filter(v=>v.period_type==='week'&&v.created_at&&new Date(v.created_at).getFullYear()===year);
+    if(type==='month'){
+      const monthVotes=validWeeks.filter(v=>new Date(v.created_at).getMonth()===month);
+      const points=weekScores(monthVotes);
+      return eligible.map(p=>({...p,points:points[p.id]||0,votes:points[p.id]||0})).filter(p=>p.points>0).sort((a,b)=>b.points-a.points||(b.followers_count||0)-(a.followers_count||0));
+    }
+    // ANO: cada mês é fechado a partir das semanas; a colocação mensal gera pontos anuais.
+    const annual={};
+    for(let m=0;m<12;m++){
+      const monthVotes=validWeeks.filter(v=>new Date(v.created_at).getMonth()===m);
+      if(!monthVotes.length) continue;
+      const monthlyPoints=weekScores(monthVotes);
+      Object.entries(monthlyPoints).filter(([,pts])=>pts>0).sort((a,b)=>b[1]-a[1]).slice(0,10).forEach(([id],i)=>annual[id]=(annual[id]||0)+scale[i]);
+    }
+    return eligible.map(p=>({...p,points:annual[p.id]||0,votes:annual[p.id]||0})).filter(p=>p.points>0).sort((a,b)=>b.points-a.points||(b.followers_count||0)-(a.followers_count||0));
   }
+  function competitionRanking(type){ return rankFromData(type,people,competitionVotes); }
   function myVote(type){
     const key=periodKey(type); return competitionVotes.find(v=>v.voter_id===session?.user?.id&&v.period_type===type&&v.period_key===key)?.candidate_id||null;
   }
@@ -890,9 +929,10 @@ export default function Home(){
 
   function CityHighlights(){
     const weekly=competitionRanking('week').slice(0,3), monthly=competitionRanking('month').slice(0,3), yearly=competitionRanking('year').slice(0,3), popular=topPeople.slice(0,3), biz=topBusinesses[0];
-    const podiumOrder=list=>[list[1],list[0],list[2]].filter(Boolean);
-    const podium=(title,list,metric)=><div className="floatingPodiumCard"><div className="floatingPodiumTitle"><h3>{title}</h3><small>TOP 3 automático</small></div><div className="floatingPodium">{podiumOrder(list).map(p=>{const pos=list.findIndex(x=>x.id===p.id)+1;const value=metric==='followers'?`${p.followers_count||0} seguidores`:metric==='votes'?`${p.votes||0} votos`:`${p.points||0} pontos`;return <button className={`floatingWinner place${pos}`} key={p.id} onClick={()=>openProfile(p)}><span className="floatingPlace">{pos}</span><span className="floatingCrown">{pos===1?'♛':pos===2?'◆':'▲'}</span><Avatar profile={p} name={p.full_name} size={pos===1?'lg':'md'}/><b>{p.full_name||p.username}</b><small>@{p.username}</small><strong>{value}</strong><span className="podiumBase">{pos}º</span></button>})}</div>{!list.length&&<p className="muted">Ainda não há participantes suficientes.</p>}</div>;
-    return <section className="cityHighlights"><div className="cityHighlightsHead"><div><b>✨ Destaques automáticos de {cityLabel}</b><small>O pódio muda sozinho conforme votos, pontos e seguidores válidos.</small></div><span className="autoRankBadge">● AO VIVO / AUTOMÁTICO</span></div><div className="floatingPodiumGrid">{podium('🏆 Top 3 da semana',weekly,'votes')}{podium('🏅 Melhor do mês',monthly,'points')}{podium('🌟 Melhor do ano',yearly,'points')}{podium('❤️ Mais populares',popular,'followers')}</div><div className="futureScopeRow"><div className="futureScopeCard enabled"><b>🏙️ CIDADE</b><small>Ranking local ativo</small></div><div className="futureScopeCard locked"><b>🗺️ MELHOR DO ESTADO</b><small>Estrutura preparada</small><span>EM BREVE</span></div><div className="futureScopeCard locked"><b>🇧🇷 MELHOR DO BRASIL</b><small>Estrutura preparada</small><span>EM BREVE</span></div></div><div className="highlightBusinessWide"><div><h3>🏪 Estabelecimento em destaque</h3><small>Destaque automático da cidade por avaliação e atividade.</small></div>{biz?<button className="highlightBusiness" onClick={()=>loadBusiness(biz.id)}><Avatar profile={{avatar_url:biz.logo_url}} name={biz.name}/><div><b>{biz.name}</b><small>★ {Number(biz.rating_average||0).toFixed(1)} • {biz.reviews_count||0} avaliações</small></div></button>:<small>Nenhum estabelecimento em destaque ainda.</small>}</div></section>
+    const views={week:{title:'🏆 Top 3 da semana',list:weekly,metric:'votes'},month:{title:'🏅 Melhor do mês',list:monthly,metric:'points'},year:{title:'🌟 Melhor do ano',list:yearly,metric:'points'},city:{title:'❤️ Mais Popular da Cidade',list:popular,metric:'followers'}};
+    const current=views[homeRankView]||views.week, list=current.list;
+    const order=[list[1],list[0],list[2]].filter(Boolean);
+    return <section className="cityHighlights"><div className="cityHighlightsHead"><div><b>✨ Ranking em destaque de {cityLabel}</b><small>Um único pódio por vez. Use a Central de Rankings ao lado para trocar.</small></div><span className="autoRankBadge">● AO VIVO / AUTOMÁTICO</span></div><div className="floatingPodiumGrid singleRankGrid"><div className="floatingPodiumCard"><div className="floatingPodiumTitle"><h3>{current.title}</h3><small>TOP 3 automático</small></div><div className="floatingPodium">{order.map(p=>{const pos=list.findIndex(x=>x.id===p.id)+1;const value=current.metric==='followers'?`${p.followers_count||0} seguidores`:current.metric==='votes'?`${p.votes||0} votos`:`${p.points||0} pontos`;return <button className={`floatingWinner place${pos} animatedRankPerson`} key={p.id} onClick={()=>openProfile(p)}><span className="floatingPlace">{pos}</span><span className="floatingCrown">{pos===1?'♛':pos===2?'◆':'▲'}</span><span className="rankPhotoSquare"><Avatar profile={p} name={p.full_name} size={pos===1?'lg':'md'}/></span><b>{p.full_name||p.username}</b><small>@{p.username}</small><strong>{value}</strong><span className="podiumBase">{pos}º</span></button>})}</div>{!list.length&&<p className="muted">Ainda não há classificados neste ranking.</p>}</div></div><div className="futureScopeRow"><div className="futureScopeCard enabled"><b>🏙️ CIDADE</b><small>Ranking local ativo</small></div><div className="futureScopeCard locked"><b>🗺️ RANKING DO ESTADO</b><small>Estrutura nacional preparada</small><span>EM BREVE</span></div><div className="futureScopeCard locked"><b>🇧🇷 RANKING BRASIL</b><small>Estrutura nacional preparada</small><span>EM BREVE</span></div></div><div className="highlightBusinessWide"><div><h3>🏪 Estabelecimento em destaque</h3><small>Destaque automático da cidade por avaliação e atividade.</small></div>{biz?<button className="highlightBusiness" onClick={()=>loadBusiness(biz.id)}><Avatar profile={{avatar_url:biz.logo_url}} name={biz.name}/><div><b>{biz.name}</b><small>★ {Number(biz.rating_average||0).toFixed(1)} • {biz.reviews_count||0} avaliações</small></div></button>:<small>Nenhum estabelecimento em destaque ainda.</small>}</div></section>
   }
 
   function HomeScreen(){return <>
@@ -904,20 +944,22 @@ export default function Home(){
   </>}
 
 
-  function PopularScreen(){
+  function RankingCityScreen(){
     const rankType=popularView==='week'?'week':popularView==='month'?'month':popularView==='year'?'year':null;
     const rank=rankType?competitionRanking(rankType):[];
     const currentVote=rankType==='week'?myVote('week'):null;
-    return <><PageHeader title="Destaques da cidade" subtitle={`Pessoas e estabelecimentos em destaque de ${cityLabel}.`}/>
+    return <><PageHeader title="Ranking da Cidade" subtitle={`Pessoas e estabelecimentos em destaque de ${cityLabel}.`}/>
       <div className="panel rankingChooser"><div className="segmented wrap">
         <button className={popularView==='city'?'active':''} onClick={()=>setPopularView('city')}>Mais popular da cidade</button>
         <button className={popularView==='week'?'active':''} onClick={()=>setPopularView('week')}>Ranking semanal</button>
         <button className={popularView==='month'?'active':''} onClick={()=>setPopularView('month')}>Ranking mensal</button>
         <button className={popularView==='year'?'active':''} onClick={()=>setPopularView('year')}>Ranking do ano</button>
+        <button disabled title="Em breve">Ranking do Estado • EM BREVE</button>
+        <button disabled title="Em breve">Ranking Brasil • EM BREVE</button>
         <button className={popularView==='business'?'active':''} onClick={()=>setPopularView('business')}>Estabelecimentos em destaque</button>
       </div></div>
-      <div className="panel rankHow"><h2>Como funciona o CIDARANK?</h2><p><b>Mais Popular:</b> permanente e automático por seguidores válidos. <b>Semana:</b> votação semanal. <b>Mês:</b> os melhores resultados das semanas avançam. <b>Ano:</b> desempenho mensal acumulado. Tudo é calculado automaticamente.</p><div className="rankFlow"><span>SEMANA</span><b>→</b><span>TOP 10</span><b>→</b><span>MÊS</span><b>→</b><span>PONTOS</span><b>→</b><span>ANO</span></div><div className="comingRanks"><span>🏅 Melhor do Estado <i>EM BREVE</i></span><span>🇧🇷 Melhor do Brasil <i>EM BREVE</i></span></div></div>
-      {popularView==='city'&&<><div className="podiumGrid">{topPeople.map((p,i)=><div className="podium" key={p.id}><span className={`medal m${i+1}`}>{i+1}</span><Avatar profile={p} name={p.full_name}/><b>{p.full_name||p.username}</b><small>@{p.username}</small><Seal type={String(p.role||'').toLowerCase()==='owner'?'owner':String(p.role||'').toLowerCase()==='admin'?'admin':'user'}/><strong>{p.followers_count||0} seguidores</strong>{p.id!==session.user.id&&<button onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}</div>)}</div><div className="panel"><div className="panelTitle"><div><h2>Mais populares da cidade</h2><p>Popularidade local por seguidores válidos.</p></div></div><div className="listTable">{people.map((p,i)=><div className="listRow" key={p.id}><b className="rankNum">#{i+1}</b><button className="plainBtn" onClick={()=>openProfile(p)}><Avatar profile={p} name={p.full_name}/></button><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username} {p.activity?`• ${p.activity}`:''}</small></div><strong>{p.followers_count||0}</strong>{p.id!==session.user.id&&<button className="smallBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Seguindo':'Seguir'}</button>}</div>)}</div></div></>}
+      <div className="panel rankHow"><h2>Como funciona o CIDARANK?</h2><p><b>Mais Popular:</b> permanente e automático por seguidores válidos. <b>Semana:</b> votação semanal. <b>Mês:</b> soma automática dos resultados semanais. <b>Ano:</b> soma automática das colocações mensais. Tudo é calculado automaticamente.</p><div className="rankFlow"><span>VOTAÇÃO SEMANAL</span><b>→</b><span>RESULTADO</span><b>→</b><span>MÊS AUTOMÁTICO</span><b>→</b><span>ANO AUTOMÁTICO</span></div><div className="comingRanks"><span>🏅 Melhor do Estado <i>EM BREVE</i></span><span>🇧🇷 Melhor do Brasil <i>EM BREVE</i></span></div></div>
+      {popularView==='city'&&<><div className="podiumGrid">{topPeople.map((p,i)=><div className="podium" key={p.id}><span className={`medal m${i+1}`}>{i+1}</span><Avatar profile={p} name={p.full_name}/><b>{p.full_name||p.username}</b><small>@{p.username}</small><Seal type={sealTypeFor(p)}/><strong>{p.followers_count||0} seguidores</strong>{p.id!==session.user.id&&<button onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}</div>)}</div><div className="panel"><div className="panelTitle"><div><h2>Mais populares da cidade</h2><p>Popularidade local por seguidores válidos.</p></div></div><div className="listTable">{people.filter(p=>!isInstitutionalOwner(p)&&(p.followers_count||0)>0).map((p,i)=><div className="listRow" key={p.id}><b className="rankNum">#{i+1}</b><button className="plainBtn" onClick={()=>openProfile(p)}><Avatar profile={p} name={p.full_name}/></button><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username} {p.activity?`• ${p.activity}`:''}</small></div><strong>{p.followers_count||0}</strong>{p.id!==session.user.id&&<button className="smallBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Seguindo':'Seguir'}</button>}</div>)}</div></div></>}
       {rankType&&<div className="panel"><div className="panelTitle"><div><h2>{rankType==='week'?'Ranking semanal':rankType==='month'?'Ranking mensal':'Ranking do ano'}</h2><p>{rankType==='week'?'1 voto por conta durante a semana. Você pode trocar o voto enquanto estiver aberta.':'Classificação automática pelos resultados das semanas. Não há voto direto aqui.'}</p></div></div><div className="listTable">{rank.map((p,i)=><div className="listRow" key={p.id}><b className="rankNum">#{i+1}</b><Avatar profile={p}/><div className="grow"><b>{p.full_name||p.username}</b><small>{rankType==='week'?`${p.votes} voto(s)`:`${p.points||0} pontos`}</small></div>{rankType==='week'&&p.id!==session.user.id&&<button className={currentVote===p.id?'smallBtn chosen':'smallBtn'} onClick={()=>voteCompetition(p,'week')}>{currentVote===p.id?'Meu voto':'Votar'}</button>}</div>)}{!rank.length&&<p className="muted">Ainda não há votos neste período.</p>}</div></div>}
       {popularView==='business'&&<div className="panel"><div className="panelTitle"><div><h2>Estabelecimentos em destaque</h2><p>Aqui não existe ranking de comércio. Os estabelecimentos aparecem em destaque conforme avaliações e atividade local.</p></div></div><div className="ownerUserList">{topBusinesses.map(b=><button className="ownerUserRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name} <Seal type="business"/></b><small>{b.category||'Estabelecimento local'} • {b.city||''} - {b.state||''}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}{!topBusinesses.length&&<p className="muted">Nenhum estabelecimento em destaque nesta cidade ainda.</p>}</div></div>}
     </>
@@ -943,19 +985,27 @@ export default function Home(){
 
   function ProfileScreen(){
     const p=selectedProfile||profile; const own=p?.id===session.user.id; const canFollow=!own&&sameCity(profile,p);
-    return <><button className="backBtn" onClick={()=>{setSelectedProfile(profile);setActive('Início')}}>← Voltar</button><section className="profileHero"><div className="profileCover" style={p?.cover_url?{backgroundImage:`url(${p.cover_url})`}:{}}></div><div className="profileMain"><Avatar profile={p} name={p?.full_name} size="xxl"/><div className="grow"><h1>{p?.full_name||p?.username}</h1><Seal type={String(p?.role||'').toLowerCase()==='owner'?'owner':String(p?.role||'').toLowerCase()==='admin'?'admin':'user'}/><p>@{p?.username||'usuario'} {String(p?.role||'').toLowerCase()!=='owner'&&<>• 📍 {p?.city} - {p?.state}</>}</p>{p?.activity&&<span className="chip">{p.activity}</span>}</div><div className="profileActions">{own?<button className="primaryBtn" onClick={()=>setActive('Configurações')}>Editar perfil</button>:<>{canFollow&&<button className="primaryBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}<button className="secondaryBtn" onClick={()=>openChat(p)}>Mensagem</button></>}</div></div></section><div className="profileStats"><div><b>{p?.followers_count||0}</b><span>Seguidores</span></div><div><b>{p?.following_count||0}</b><span>Seguindo</span></div>{String(p?.role||'').toLowerCase()!=='owner'&&<div><b>{p?.city||'-'}</b><span>Cidade</span></div>}</div><div className="panel"><h2>Sobre</h2><p>{p?.bio||'Este perfil ainda não escreveu uma bio.'}</p>{p?.public_phone&&<p>📱 {p.public_phone}</p>}{p?.website&&<p>🌐 {p.website}</p>}</div><div className="panel"><h2>Medalhas e Troféus</h2>{profileAwards.length?<div className="awardsGrid">{profileAwards.map((a,i)=><div className="awardCard" key={`${a.title}-${i}`}><span>{a.icon}</span><div><b>{a.title}</b><small>{a.text}</small></div></div>)}</div>:<p className="muted">Este perfil ainda não conquistou medalhas. Participe dos rankings e competições da cidade.</p>}</div>{!canFollow&&!own&&<div className="infoBanner">Você está visitando um perfil de outra cidade. O ranking por seguidores considera conexões locais.</div>}</>
+    return <><button className="backBtn" onClick={()=>{setSelectedProfile(profile);setActive('Início')}}>← Voltar</button><section className="profileHero"><div className="profileCover" style={p?.cover_url?{backgroundImage:`url(${p.cover_url})`}:{}}></div><div className="profileMain"><Avatar profile={p} name={p?.full_name} size="xxl"/><div className="grow"><h1>{p?.full_name||p?.username}</h1><Seal type={sealTypeFor(p)}/><p>@{p?.username||'usuario'} {!isInstitutionalOwner(p)&&<>• 📍 {p?.city} - {p?.state}</>}</p>{p?.activity&&<span className="chip">{p.activity}</span>}</div><div className="profileActions">{own?<button className="primaryBtn" onClick={()=>setActive('Configurações')}>Editar perfil</button>:<>{canFollow&&<button className="primaryBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}<button className="secondaryBtn" onClick={()=>openChat(p)}>Mensagem</button></>}</div></div></section><div className="profileStats"><div><b>{p?.followers_count||0}</b><span>Seguidores</span></div><div><b>{p?.following_count||0}</b><span>Seguindo</span></div>{!isInstitutionalOwner(p)&&<div><b>{p?.city||'-'}</b><span>Cidade</span></div>}</div><div className="panel"><h2>Sobre</h2><p>{p?.bio||'Este perfil ainda não escreveu uma bio.'}</p>{p?.public_phone&&<p>📱 {p.public_phone}</p>}{p?.website&&<p>🌐 {p.website}</p>}</div><div className="panel"><h2>Medalhas e Troféus</h2>{profileAwards.length?<div className="awardsGrid">{profileAwards.map((a,i)=><div className="awardCard" key={`${a.title}-${i}`}><span>{a.icon}</span><div><b>{a.title}</b><small>{a.text}</small></div></div>)}</div>:<p className="muted">Este perfil ainda não conquistou medalhas. Participe dos rankings e competições da cidade.</p>}</div>{!canFollow&&!own&&<div className="infoBanner">Você está visitando um perfil de outra cidade. O ranking por seguidores considera conexões locais.</div>}</>
   }
 
   function SettingsScreen(){return <><PageHeader title="Configurações" subtitle="Edite seu perfil. Sua cidade permanece vinculada ao cadastro."/><form className="panel stackForm settingsForm" onSubmit={saveSettings}><div className="mediaSettings"><div><Avatar profile={{avatar_url:settings.avatar_url}} name={settings.full_name} size="xl"/><label className="uploadBtn">{avatarUploading?'Enviando...':'Trocar foto'}<input type="file" hidden accept="image/*" onChange={e=>uploadProfileImage('avatar_url',e.target.files?.[0])}/></label></div><div className="coverPreview" style={settings.cover_url?{backgroundImage:`url(${settings.cover_url})`}:{}}><label className="uploadBtn">{coverUploading?'Enviando...':'Trocar capa'}<input type="file" hidden accept="image/*" onChange={e=>uploadProfileImage('cover_url',e.target.files?.[0])}/></label></div></div><div className="formGrid"><label>Nome completo<input required value={settings.full_name} onChange={e=>setSettings({...settings,full_name:e.target.value})}/></label><label>@Usuário<input required value={settings.username} onChange={e=>setSettings({...settings,username:e.target.value})}/></label><label>Atividade / profissão<input value={settings.activity} onChange={e=>setSettings({...settings,activity:e.target.value})} placeholder="Ex.: Comerciante, Estudante"/></label><label>Gênero<select value={settings.gender} onChange={e=>setSettings({...settings,gender:e.target.value})}><option value="">Não informar</option><option value="homem">Homem</option><option value="mulher">Mulher</option><option value="outros">Outros</option></select></label><label>Telefone público<input value={settings.public_phone} onChange={e=>setSettings({...settings,public_phone:e.target.value})}/></label><label>Site<input value={settings.website} onChange={e=>setSettings({...settings,website:e.target.value})}/></label><label>Cidade<input value={profile.city||''} disabled/></label><label>Estado<input value={profile.state||''} disabled/></label></div><label>Bio<textarea rows={4} value={settings.bio} onChange={e=>setSettings({...settings,bio:e.target.value})} placeholder="Conte um pouco sobre você"/></label><button className="primaryBtn" disabled={busy}>Salvar alterações</button></form></>}
 
-  function ExploreScreen(){return <><PageHeader title="Explorar Cidade" subtitle="Visite qualquer cidade do Brasil sem alterar sua cidade de cadastro."/><div className="panel"><div className="exploreControls"><select value={exploreStateId} onChange={handleExploreState}><option value="">Escolha o estado</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={exploreCity} disabled={!exploreStateId||exploreBusy} onChange={e=>setExploreCity(e.target.value)}><option value="">Escolha a cidade</option>{exploreCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="primaryBtn" disabled={!exploreCity||exploreBusy} onClick={explore}>{exploreBusy?'Carregando...':'Explorar'}</button></div></div>{exploreCity&&exploreData.posts.length+exploreData.people.length+exploreData.businesses.length>=0&&<><div className="cityVisitHero"><span>VISITANDO</span><h1>{exploreCity} - {exploreState}</h1><p>Seu cadastro continua em {cityLabel}.</p></div><div className="panel"><h2>Publicar nesta cidade</h2>{Composer({text:explorePostText,setText:setExplorePostText,allowPhoto:false,onPublish:()=>publishPost({text:explorePostText,file:null,city:exploreCity,state:exploreState,after:explore})})}</div><div className="twoCol"><div className="panel"><h2>Pessoas em destaque</h2>{!exploreData.people.length&&<p className="muted">Nenhuma pessoa cadastrada nesta cidade ainda.</p>}{exploreData.people.slice(0,10).map((p,i)=><div className="listRow" key={p.id}><b>#{i+1}</b><Avatar profile={p}/><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></div>)}</div><div className="panel"><h2>Comércios</h2>{!exploreData.businesses.length&&<p className="muted">Nenhum comércio cadastrado nesta cidade ainda.</p>}{exploreData.businesses.slice(0,10).map(b=><button className="listRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name}</b><small>{b.category||'Estabelecimento local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}</div></div><h2 className="sectionHeading">Publicações de {exploreCity}</h2>{exploreData.posts.length?exploreData.posts.map(p=>PostCard({post:p,authors:exploreData.authors,bizMap:exploreData.postBusinesses,interactive:false})):<Empty title="Ainda não há publicações nesta cidade."/>}</>}</>}
+  function ExploreRankings(){
+    const ep=exploreData.people||[], ev=exploreData.votes||[];
+    const popular=[...ep].filter(p=>(p.followers_count||0)>0).sort((a,b)=>(b.followers_count||0)-(a.followers_count||0));
+    const weekly=rankFromData('week',ep,ev), monthly=rankFromData('month',ep,ev), yearly=rankFromData('year',ep,ev);
+    const card=(title,list,metric)=><div className="exploreRankCard"><h3>{title}</h3>{list.slice(0,3).map((p,i)=><button key={p.id} onClick={()=>openProfile(p)}><b>#{i+1}</b><Avatar profile={p} size="sm"/><span><strong>{p.full_name||p.username}</strong><small>@{p.username}</small></span><em>{metric==='followers'?`${p.followers_count} seguidores`:metric==='votes'?`${p.votes} votos`:`${p.points} pts`}</em></button>)}{!list.length&&<p className="muted">Ainda não há classificados.</p>}</div>;
+    return <section className="panel exploreRankings"><div className="panelTitle"><div><h2>🏆 Ranking de {exploreCity}</h2><p>Mesma dinâmica da página inicial da cidade visitada.</p></div></div><div className="exploreRankGrid">{card('🗳️ Semana',weekly,'votes')}{card('🏆 Melhor do Mês',monthly,'points')}{card('👑 Melhor do Ano',yearly,'points')}{card('❤️ Mais Popular',popular,'followers')}</div><div className="comingRanks"><span>🏅 Melhor do Estado <i>EM BREVE</i></span><span>🇧🇷 Melhor do Brasil <i>EM BREVE</i></span></div></section>;
+  }
+
+  function ExploreScreen(){return <><PageHeader title="Explorar Cidade" subtitle="Visite qualquer cidade do Brasil sem alterar sua cidade de cadastro."/><div className="panel"><div className="exploreControls"><select value={exploreStateId} onChange={handleExploreState}><option value="">Escolha o estado</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={exploreCity} disabled={!exploreStateId||exploreBusy} onChange={e=>setExploreCity(e.target.value)}><option value="">Escolha a cidade</option>{exploreCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="primaryBtn" disabled={!exploreCity||exploreBusy} onClick={explore}>{exploreBusy?'Carregando...':'Explorar'}</button></div></div>{exploreCity&&exploreData.posts.length+exploreData.people.length+exploreData.businesses.length>=0&&<><div className="cityVisitHero"><span>VISITANDO</span><h1>{exploreCity} - {exploreState}</h1><p>Seu cadastro continua em {cityLabel}.</p></div><ExploreRankings/><div className="panel"><h2>Publicar nesta cidade</h2>{Composer({text:explorePostText,setText:setExplorePostText,allowPhoto:false,onPublish:()=>publishPost({text:explorePostText,file:null,city:exploreCity,state:exploreState,after:explore})})}</div><div className="twoCol"><div className="panel"><h2>Pessoas em destaque</h2>{!exploreData.people.length&&<p className="muted">Nenhuma pessoa cadastrada nesta cidade ainda.</p>}{exploreData.people.slice(0,10).map((p,i)=><div className="listRow" key={p.id}><b>#{i+1}</b><Avatar profile={p}/><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></div>)}</div><div className="panel"><h2>Comércios</h2>{!exploreData.businesses.length&&<p className="muted">Nenhum comércio cadastrado nesta cidade ainda.</p>}{exploreData.businesses.slice(0,10).map(b=><button className="listRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name}</b><small>{b.category||'Estabelecimento local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}</div></div><h2 className="sectionHeading">Publicações de {exploreCity}</h2>{exploreData.posts.length?exploreData.posts.map(p=>PostCard({post:p,authors:exploreData.authors,bizMap:exploreData.postBusinesses,interactive:false})):<Empty title="Ainda não há publicações nesta cidade."/>}</>}</>}
 
   function MessagesScreen(){
     const conversations={};
     for(const m of daquitop_messages){const other=m.sender_id===session.user.id?m.recipient_id:m.sender_id;const prev=conversations[other];if(!prev||new Date(m.created_at)>new Date(prev.created_at))conversations[other]=m}
     const convoIds=Object.keys(conversations).sort((a,b)=>new Date(conversations[b].created_at)-new Date(conversations[a].created_at));
     const chatMessages=selectedChat?daquitop_messages.filter(m=>(m.sender_id===session.user.id&&m.recipient_id===selectedChat.id)||(m.sender_id===selectedChat.id&&m.recipient_id===session.user.id)):[];
-    return <><PageHeader title="Mensagens" subtitle="Conversas privadas entre pessoas do CIDARANK."/><div className="daquitop_messagesLayout"><div className="conversationList"><h3>Conversas</h3>{convoIds.map(id=>{const p=messagePeople[id]||{};const last=conversations[id];const unread=last.recipient_id===session.user.id&&!last.read_at;return <button className={`conversation ${selectedChat?.id===id?'active':''}`} key={id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username||'Usuário'}</b><small>{last.content.slice(0,50)}</small></div>{unread&&<i/>}</button>})}{!convoIds.length&&<p className="muted">Nenhuma conversa ainda.</p>}<h3>Começar conversa</h3>{people.filter(p=>p.id!==session.user.id).slice(0,12).map(p=><button className="conversation" key={p.id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username}</b><small>@{p.username}</small></div></button>)}</div><div className="chatPanel">{selectedChat?<><div className="chatHead"><Avatar profile={selectedChat}/><div><b>{selectedChat.full_name||selectedChat.username}</b><small>@{selectedChat.username}</small></div></div><div className="chatMessages">{chatMessages.map(m=><div className={`bubble ${m.sender_id===session.user.id?'mine':''}`} key={m.id}>{m.content}<small>{fmtDate(m.created_at)}</small></div>)}</div><form className="chatInput" onSubmit={sendMessage}><input value={messageText} onChange={e=>setMessageText(e.target.value)} placeholder="Digite uma mensagem..."/><button>Enviar</button></form></>:<Empty title="Selecione uma conversa.">Você também pode abrir o perfil de alguém e clicar em Mensagem.</Empty>}</div></div></>
+    return <>{exploreCity&&<div className="visitChatReturn"><button onClick={()=>setActive('Explorar Cidade')}>← Voltar para {exploreCity}</button><span>Você está visitando {exploreCity} - {exploreState}</span></div>}<PageHeader title="Mensagens" subtitle="Conversas privadas entre pessoas do CIDARANK."/><div className="daquitop_messagesLayout"><div className="conversationList"><h3>Conversas</h3>{convoIds.map(id=>{const p=messagePeople[id]||{};const last=conversations[id];const unread=last.recipient_id===session.user.id&&!last.read_at;return <button className={`conversation ${selectedChat?.id===id?'active':''}`} key={id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username||'Usuário'}</b><small>{last.content.slice(0,50)}</small></div>{unread&&<i/>}</button>})}{!convoIds.length&&<p className="muted">Nenhuma conversa ainda.</p>}<h3>Começar conversa</h3>{people.filter(p=>p.id!==session.user.id).slice(0,12).map(p=><button className="conversation" key={p.id} onClick={()=>openChat(p)}><Avatar profile={p}/><div><b>{p.full_name||p.username}</b><small>@{p.username}</small></div></button>)}</div><div className="chatPanel">{selectedChat?<><div className="chatHead"><Avatar profile={selectedChat}/><div><b>{selectedChat.full_name||selectedChat.username}</b><small>@{selectedChat.username}</small></div></div><div className="chatMessages">{chatMessages.map(m=><div className={`bubble ${m.sender_id===session.user.id?'mine':''}`} key={m.id}>{m.content}<small>{fmtDate(m.created_at)}</small></div>)}</div><form className="chatInput" onSubmit={sendMessage}><input value={messageText} onChange={e=>setMessageText(e.target.value)} placeholder="Digite uma mensagem..."/><button>Enviar</button></form></>:<Empty title="Selecione uma conversa.">Você também pode abrir o perfil de alguém e clicar em Mensagem.</Empty>}</div></div></>
   }
 
   function OwnerPanelScreen(){
@@ -1063,7 +1113,7 @@ export default function Home(){
 
   function renderScreen(){
     switch(active){
-      case 'Populares': return PopularScreen();
+      case 'Ranking da Cidade': return RankingCityScreen();
       case 'Comércios': return BusinessScreen();
       case 'Explorar Cidade': return ExploreScreen();
       case 'Mensagens': return MessagesScreen();
@@ -1076,8 +1126,8 @@ export default function Home(){
   }
 
   return <main className="shell">
-    <aside className="sidebar"><div className="brand"><div className="brandMark">◆</div><div><b>CIDA<span>RANK</span></b><small>CIDADES QUE CONECTAM</small></div></div><nav>{menuItems.map(([ic,label])=><button key={label} onClick={()=>{setActive(label);if(label==='Perfil')setSelectedProfile(profile);if(label==='Comércios')setSelectedBusiness(null)}} className={active===label?'active':''}><i>{ic}</i><span>{label}</span></button>)}</nav><div className="elite"><div className="crown">♛</div><b>FAÇA PARTE<br/><span>DA ELITE</span></b><p>Conquiste seu espaço e seja destaque na sua cidade.</p><button onClick={()=>setActive('Populares')}>VER RANKINGS →</button></div><div className="miniCity">⌂ <div><b>CIDARANK</b><small>Mais que uma rede, uma cidade viva.</small></div></div></aside>
+    <aside className="sidebar"><div className="brand"><div className="brandMark">◆</div><div><b>CIDA<span>RANK</span></b><small>CIDADES QUE CONECTAM</small></div></div><nav>{menuItems.map(([ic,label])=><button key={label} onClick={()=>{setActive(label);if(label==='Perfil')setSelectedProfile(profile);if(label==='Comércios')setSelectedBusiness(null)}} className={active===label?'active':''}><i>{ic}</i><span>{label}</span></button>)}</nav><div className="elite"><div className="crown">♛</div><b>FAÇA PARTE<br/><span>DA ELITE</span></b><p>Conquiste seu espaço e seja destaque na sua cidade.</p><button onClick={()=>setActive('Ranking da Cidade')}>VER RANKINGS →</button></div><div className="miniCity">⌂ <div><b>CIDARANK</b><small>Mais que uma rede, uma cidade viva.</small></div></div></aside>
     <section className="mainCol"><header className="topbar"><div className="search">⌕ <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pesquisar pessoas, comércios..."/>{searchResults.length>0&&<div className="searchDrop">{searchResults.map((r,i)=><button key={`${r.kind}-${r.item.id}-${i}`} onClick={()=>{setSearch('');r.kind==='person'?openProfile(r.item):loadBusiness(r.item.id)}}><Avatar profile={r.kind==='person'?r.item:{avatar_url:r.item.logo_url}} name={r.label} size="xs"/><div><b>{r.label}</b><small>{r.kind==='person'?`@${r.item.username}`:r.item.category||'Comércio'}</small></div></button>)}</div>}</div><div className="city">⌖ {cityLabel}</div><div className="icons"><button title="Mensagens" onClick={()=>setActive('Mensagens')}>💬</button><button title="Perfil" onClick={openOwnProfile}><Avatar profile={profile} name={displayName} size="sm"/></button><b>{displayName}</b><button className="logout" onClick={logout}>Sair</button></div></header>{notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice('')}>×</button></div>}{announcements.filter(a=>a.show_popup&&(a.scope==='brasil'||(a.scope==='estado'&&stateKey(a.state)===stateKey(profile?.state))||(a.scope==='cidade'&&stateKey(a.state)===stateKey(profile?.state)&&cityKey(a.city)===cityKey(profile?.city)))).slice(0,1).map(a=><div className="globalAnnouncement" key={a.id}><div><b>📢 {a.title}</b><p>{a.message}</p><small>{a.kind}</small></div><button onClick={()=>setAnnouncements(v=>v.filter(x=>x.id!==a.id))}>Entendi</button></div>)}<div className="screenContent">{renderScreen()}</div></section>
-    <aside className="rightCol"><div className="rankCard"><div className="rankTitle"><h3>MAIS POPULARES DA CIDADE</h3><button onClick={()=>setActive('Populares')}>Ver ranking →</button></div>{topPeople.length?topPeople.map((p,i)=><button className="rankRow" key={p.id} onClick={()=>openProfile(p)}><b className={`medal m${i+1}`}>{i+1}</b><Avatar profile={p}/><div><b>{p.full_name||p.username}</b><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></button>):<div className="rankEmpty">Ainda não há ranking nesta cidade.</div>}</div><div className="rankCard"><div className="rankTitle"><h3>ESTABELECIMENTOS EM DESTAQUE</h3><button onClick={()=>setActive('Comércios')}>Ver destaques →</button></div>{topBusinesses.length?topBusinesses.map((b,i)=><button className="rankRow" key={b.id} onClick={()=>loadBusiness(b.id)}><b className={`medal m${i+1}`}>{i+1}</b><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div><b>{b.name}</b><small>{b.category||'Estabelecimento local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>):<div className="rankEmpty">Nenhum estabelecimento em destaque ainda.</div>}</div><div className="supportLocal">🛍️ <div><b>APOIE O COMÉRCIO LOCAL</b><small>COMPRE NA SUA CIDADE<br/>FORTALEÇA O COMÉRCIO LOCAL!</small></div><span>→</span></div><div className="weather"><div>📍 <b>{profile?.city}</b><small>{profile?.state}</small></div><button onClick={openOwnProfile}>👤 <b>{displayName}</b><small>@{profile?.username}</small></button></div><blockquote>“Cidades fortes são feitas por pessoas que acreditam no seu lugar.”</blockquote></aside>
+    <aside className="rightCol"><div className="rankCard rankingCentral"><div className="rankTitle"><h3>🏆 CENTRAL DE RANKINGS</h3><button onClick={()=>setActive('Ranking da Cidade')}>Abrir →</button></div><button className="rankCentralBtn" onClick={()=>{setHomeRankView('city');setPopularView('city');setActive('Ranking da Cidade')}}><span>👑</span><div><b>Popular da Cidade</b><small>Por seguidores válidos</small></div><em>›</em></button><button className="rankCentralBtn" onClick={()=>{setHomeRankView('week');setPopularView('week');setActive('Ranking da Cidade')}}><span>🗳️</span><div><b>Ranking Semanal</b><small>Votação ativa</small></div><em>›</em></button><button className="rankCentralBtn" onClick={()=>{setHomeRankView('month');setPopularView('month');setActive('Ranking da Cidade')}}><span>🏆</span><div><b>Ranking Mensal</b><small>Automático pelas semanas</small></div><em>›</em></button><button className="rankCentralBtn" onClick={()=>{setHomeRankView('year');setPopularView('year');setActive('Ranking da Cidade')}}><span>👑</span><div><b>Ranking Anual</b><small>Automático pelos meses</small></div><em>›</em></button><button className="rankCentralBtn locked" disabled><span>🗺️</span><div><b>Ranking do Estado</b><small>Expansão estadual</small></div><strong>EM BREVE</strong></button><button className="rankCentralBtn locked" disabled><span>🇧🇷</span><div><b>Ranking Brasil</b><small>Expansão nacional</small></div><strong>EM BREVE</strong></button></div><div className="rankCard"><div className="rankTitle"><h3>ESTABELECIMENTOS EM DESTAQUE</h3><button onClick={()=>setActive('Comércios')}>Ver destaques →</button></div>{topBusinesses.length?topBusinesses.map((b,i)=><button className="rankRow" key={b.id} onClick={()=>loadBusiness(b.id)}><b className={`medal m${i+1}`}>{i+1}</b><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div><b>{b.name}</b><small>{b.category||'Estabelecimento local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>):<div className="rankEmpty">Nenhum estabelecimento em destaque ainda.</div>}</div><div className="supportLocal">🛍️ <div><b>APOIE O COMÉRCIO LOCAL</b><small>COMPRE NA SUA CIDADE<br/>FORTALEÇA O COMÉRCIO LOCAL!</small></div><span>→</span></div><div className="weather"><div>📍 <b>{profile?.city}</b><small>{profile?.state}</small></div><button onClick={openOwnProfile}>👤 <b>{displayName}</b><small>@{profile?.username}</small></button></div><blockquote>“Cidades fortes são feitas por pessoas que acreditam no seu lugar.”</blockquote></aside>
   </main>
 }

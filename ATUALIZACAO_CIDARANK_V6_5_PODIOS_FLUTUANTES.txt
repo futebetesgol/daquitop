@@ -1,0 +1,28 @@
+CIDARANK V6.5 — PÓDIOS FLUTUANTES AUTOMÁTICOS
+
+ADICIONADO
+- TOP 3 flutuante para Ranking da Semana.
+- TOP 3 flutuante para Melhor do Mês.
+- TOP 3 flutuante para Melhor do Ano.
+- TOP 3 flutuante para Mais Populares da Cidade.
+- 1º lugar central, maior e elevado; 2º à esquerda; 3º à direita.
+- Mudança automática das pessoas exibidas conforme dados do ranking.
+- Indicador AO VIVO / AUTOMÁTICO.
+- Área de expansão Cidade → Estado → Brasil.
+- Melhor do Estado exibido apagado como EM BREVE.
+- Melhor do Brasil exibido apagado como EM BREVE.
+- Estrutura visual preparada para ativação futura de Estado/Brasil.
+
+MANTIDO
+- Ranking semanal, mensal, anual e popularidade já existentes.
+- Regras automáticas de pontos da V6.4.
+- Comunicados e manutenção.
+- Suporte/chat e administração.
+- Estabelecimento em destaque.
+
+BANCO DE DADOS
+- Nenhum SQL novo é necessário para esta V6.5 além do SQL V6.4.
+- Se o SQL V6.4 ainda não foi executado, execute SUPABASE_CIDARANK_V6_4_RANKING_COMUNICACAO.sql.
+
+OBSERVAÇÃO
+- Estado e Brasil ficam programados na interface, porém bloqueados como EM BREVE. A ativação nacional/estadual futura exigirá definir as regras de classificação e consulta desses escopos antes de liberar ao público.

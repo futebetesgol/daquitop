@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const MENU = [
-  ['⌂','Início'],['▣','Mural'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
+  ['⌂','Início'],['🏆','Populares'],['▰','Comércios'],['⌖','Explorar Cidade'],['✈','Mensagens'],['●','Perfil'],['⚙','Configurações'],['?','Suporte']
 ];
 
 const OWNER_EMAIL = 'cidarankk@gmail.com';
@@ -123,7 +123,6 @@ export default function Home(){
   const [ownerTab,setOwnerTab]=useState('dashboard');
   const [ownerUsers,setOwnerUsers]=useState([]);
   const [ownerTickets,setOwnerTickets]=useState([]);
-  const [ownerPosts,setOwnerPosts]=useState([]);
   const [ownerBusinesses,setOwnerBusinesses]=useState([]);
   const [ownerBusy,setOwnerBusy]=useState(false);
   const [ownerReply,setOwnerReply]=useState({});
@@ -134,11 +133,15 @@ export default function Home(){
   const [ownerSearch,setOwnerSearch]=useState('');
   const [ownerCityFilter,setOwnerCityFilter]=useState('');
   const [ownerStateFilter,setOwnerStateFilter]=useState('');
+  const [ownerStateId,setOwnerStateId]=useState('');
+  const [ownerCities,setOwnerCities]=useState([]);
+  const [ownerLocationBusy,setOwnerLocationBusy]=useState(false);
+  const [ownerRankingPeriod,setOwnerRankingPeriod]=useState('week');
   const [ownerLiveEvents,setOwnerLiveEvents]=useState([]);
   const [ownerRealtimeConnected,setOwnerRealtimeConnected]=useState(false);
   const [ownerHealth,setOwnerHealth]=useState({database:'checking',auth:'ok',realtime:'checking',lastCheck:null});
 
-  const [competitionType,setCompetitionType]=useState('month');
+  const [competitionType,setCompetitionType]=useState('week');
   const [competitionVotes,setCompetitionVotes]=useState([]);
 
   const [search,setSearch]=useState('');
@@ -203,7 +206,6 @@ export default function Home(){
   useEffect(()=>{
     if(!isAdmin)return;
     const channel=supabase.channel('cidarank-owner-live')
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'},payload=>pushOwnerLive('Nova publicação',payload.new))
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'businesses'},payload=>pushOwnerLive('Novo comércio',payload.new))
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'daquitop_support_tickets'},payload=>pushOwnerLive('Novo chamado',payload.new))
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'profiles'},payload=>pushOwnerLive('Novo usuário',payload.new))
@@ -240,6 +242,25 @@ export default function Home(){
       const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${id}/municipios?orderBy=nome`);
       setExploreCities(r.ok?await r.json():[]);
     }finally{setExploreBusy(false)}
+  }
+
+  async function handleOwnerStateChange(e){
+    const id=e.target.value;
+    const item=states.find(x=>String(x.id)===String(id));
+    setOwnerStateId(id);
+    setOwnerStateFilter(item?.sigla||'');
+    setOwnerCityFilter('');
+    setOwnerCities([]);
+    if(!id)return;
+    setOwnerLocationBusy(true);
+    try{
+      const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${id}/municipios?orderBy=nome`);
+      if(!r.ok)throw new Error('IBGE indisponível');
+      setOwnerCities(await r.json());
+    }catch{
+      setOwnerCities([]);
+      setNotice('Não foi possível carregar as cidades do IBGE agora. Tente novamente.');
+    }finally{setOwnerLocationBusy(false)}
   }
 
   async function bootstrap(userId){
@@ -371,17 +392,16 @@ export default function Home(){
     if(!adminNow)return;
     setOwnerBusy(true);
     try{
-      const [u,t,p,b,pr,lg,rp,vt]=await Promise.all([
-        supabase.from('profiles').select('*').order('created_at',{ascending:false}).limit(1000),
-        supabase.from('daquitop_support_tickets').select('*').order('created_at',{ascending:false}).limit(500),
-        supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(500),
-        supabase.from('businesses').select('*').order('created_at',{ascending:false}).limit(500),
-        supabase.from('cidarank_user_presence').select('*').order('last_seen',{ascending:false}).limit(1000),
-        supabase.from('cidarank_admin_logs').select('*').order('created_at',{ascending:false}).limit(500),
-        supabase.from('cidarank_reports').select('*').order('created_at',{ascending:false}).limit(500),
-        supabase.from('daquitop_competition_votes').select('*').order('created_at',{ascending:false}).limit(2000)
+      const [u,t,b,pr,lg,rp,vt]=await Promise.all([
+        supabase.from('profiles').select('*').order('created_at',{ascending:false}).limit(5000),
+        supabase.from('daquitop_support_tickets').select('*').order('created_at',{ascending:false}).limit(1000),
+        supabase.from('businesses').select('*').order('created_at',{ascending:false}).limit(5000),
+        supabase.from('cidarank_user_presence').select('*').order('last_seen',{ascending:false}).limit(5000),
+        supabase.from('cidarank_admin_logs').select('*').order('created_at',{ascending:false}).limit(1000),
+        supabase.from('cidarank_reports').select('*').order('created_at',{ascending:false}).limit(1000),
+        supabase.from('daquitop_competition_votes').select('*').order('created_at',{ascending:false}).limit(10000)
       ]);
-      setOwnerUsers(u.data||[]); setOwnerTickets(t.data||[]); setOwnerPosts(p.data||[]); setOwnerBusinesses(b.data||[]);
+      setOwnerUsers(u.data||[]); setOwnerTickets(t.data||[]); setOwnerBusinesses(b.data||[]);
       setOwnerPresence(pr.data||[]); setOwnerLogs(lg.data||[]); setOwnerReports(rp.data||[]); setOwnerVotes(vt.data||[]);
       const userIds=[...new Set([...(t.data||[]).map(x=>x.user_id),...(lg.data||[]).flatMap(x=>[x.actor_id,x.target_user_id])].filter(Boolean))];
       if(userIds.length){
@@ -571,11 +591,11 @@ export default function Home(){
     if(pos===0&&ranked.length)awards.push({icon:'🥇',title:'TOP 1 Popular',text:'1º lugar em seguidores na cidade'});
     else if(pos===1)awards.push({icon:'🥈',title:'TOP 2 Popular',text:'2º lugar em seguidores na cidade'});
     else if(pos===2)awards.push({icon:'🥉',title:'TOP 3 Popular',text:'3º lugar em seguidores na cidade'});
-    for(const type of ['month','year']){
+    for(const type of ['week','month','year']){
       const key=periodKey(type); const counts={};
       (votes||[]).filter(v=>v.period_type===type&&v.period_key===key).forEach(v=>counts[v.candidate_id]=(counts[v.candidate_id]||0)+1);
       const max=Math.max(0,...Object.values(counts));
-      if(max>0&&counts[person.id]===max)awards.push({icon:type==='month'?'🏆':'👑',title:type==='month'?'Líder do Mês':'Líder do Ano',text:`${counts[person.id]} voto(s) na competição atual`});
+      if(max>0&&counts[person.id]===max){const meta=type==='week'?['🥇','Popular da Semana']:type==='month'?['🏆','Popular do Mês']:['👑','Popular do Ano'];awards.push({icon:meta[0],title:meta[1],text:`${counts[person.id]} voto(s) no período atual`});}
     }
     if((person.followers_count||0)>=10)awards.push({icon:'⭐',title:'Destaque Local',text:'10 ou mais seguidores locais'});
     setProfileAwards(awards);
@@ -711,7 +731,15 @@ export default function Home(){
     return [...p,...b].slice(0,7);
   },[search,people,businesses]);
 
-  function periodKey(type){return type==='month'?new Date().toISOString().slice(0,7):String(new Date().getFullYear())}
+  function isoWeekKey(date=new Date()){
+    const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+    const day=d.getUTCDay()||7;
+    d.setUTCDate(d.getUTCDate()+4-day);
+    const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+    const week=Math.ceil((((d-yearStart)/86400000)+1)/7);
+    return `${d.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
+  }
+  function periodKey(type){if(type==='week')return isoWeekKey();if(type==='month')return new Date().toISOString().slice(0,7);return String(new Date().getFullYear())}
   function competitionRanking(type){
     const key=periodKey(type); const counts={};
     competitionVotes.filter(v=>v.period_type===type&&v.period_key===key).forEach(v=>counts[v.candidate_id]=(counts[v.candidate_id]||0)+1);
@@ -774,18 +802,17 @@ export default function Home(){
   function HomeScreen(){return <>
     <NationalBanner/>
     {Composer({text:postText,setText:setPostText,onPublish:()=>publishPost()})}
-    <div className="sectionTitle"><h2>Mural da sua cidade</h2><button onClick={()=>setActive('Mural')}>Ver tudo →</button></div>
-    {posts.length?<div className="feed">{posts.slice(0,8).map(p=>PostCard({post:p}))}</div>:<Empty title="O mural da sua cidade está começando.">Seja a primeira pessoa a publicar no CIDARANK.</Empty>}
+    <div className="sectionTitle"><h2>Publicações da sua cidade</h2></div>
+    {posts.length?<div className="feed">{posts.slice(0,8).map(p=>PostCard({post:p}))}</div>:<Empty title="As publicações da sua cidade estão começando.">Seja a primeira pessoa a publicar no CIDARANK.</Empty>}
   </>}
 
-  function MuralScreen(){return <><NationalBanner compact/><PageHeader title="Mural" subtitle={`Tudo que está acontecendo em ${cityLabel}.`}/>{Composer({text:postText,setText:setPostText,onPublish:()=>publishPost()})}{posts.length?<div className="feed">{posts.map(p=>PostCard({post:p}))}</div>:<Empty title="Ainda não há publicações.">Publique a primeira novidade da cidade.</Empty>}</>}
 
   function PopularScreen(){
     const rank=competitionRanking(competitionType); const currentVote=myVote(competitionType);
     return <><PageHeader title="Populares" subtitle={`Ranking real por seguidores locais de ${cityLabel}.`}/>
       <div className="podiumGrid">{topPeople.map((p,i)=><div className="podium" key={p.id}><span className={`medal m${i+1}`}>{i+1}</span><Avatar profile={p} name={p.full_name}/><b>{p.full_name||p.username}</b><small>@{p.username}</small><strong>{p.followers_count||0} seguidores</strong>{p.id!==session.user.id&&<button onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}</div>)}</div>
       <div className="panel"><div className="panelTitle"><div><h2>Ranking da cidade</h2><p>Seguidores válidos entre pessoas da mesma cidade.</p></div></div><div className="listTable">{people.map((p,i)=><div className="listRow" key={p.id}><b className="rankNum">#{i+1}</b><button className="plainBtn" onClick={()=>openProfile(p)}><Avatar profile={p} name={p.full_name}/></button><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username} {p.activity?`• ${p.activity}`:''}</small></div><strong>{p.followers_count||0}</strong>{p.id!==session.user.id&&<button className="smallBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Seguindo':'Seguir'}</button>}</div>)}</div></div>
-      <div className="panel"><div className="panelTitle"><div><h2>Competições</h2><p>1 voto por conta. Você pode trocar o voto durante o período.</p></div><div className="segmented"><button className={competitionType==='month'?'active':''} onClick={()=>setCompetitionType('month')}>Melhor do mês</button><button className={competitionType==='year'?'active':''} onClick={()=>setCompetitionType('year')}>Melhor do ano</button></div></div><div className="listTable">{rank.map((p,i)=><div className="listRow" key={p.id}><b className="rankNum">#{i+1}</b><Avatar profile={p}/><div className="grow"><b>{p.full_name||p.username}</b><small>{p.votes} voto(s)</small></div>{p.id!==session.user.id&&<button className={currentVote===p.id?'smallBtn chosen':'smallBtn'} onClick={()=>voteCompetition(p,competitionType)}>{currentVote===p.id?'Meu voto':'Votar'}</button>}</div>)}</div></div>
+      <div className="panel"><div className="panelTitle"><div><h2>Ranking de popularidade</h2><p>1 voto por conta. Você pode trocar o voto enquanto o período estiver aberto.</p></div><div className="segmented"><button className={competitionType==='week'?'active':''} onClick={()=>setCompetitionType('week')}>Popular da semana</button><button className={competitionType==='month'?'active':''} onClick={()=>setCompetitionType('month')}>Popular do mês</button><button className={competitionType==='year'?'active':''} onClick={()=>setCompetitionType('year')}>Popular do ano</button></div></div><div className="listTable">{rank.map((p,i)=><div className="listRow" key={p.id}><b className="rankNum">#{i+1}</b><Avatar profile={p}/><div className="grow"><b>{p.full_name||p.username}</b><small>{p.votes} voto(s)</small></div>{p.id!==session.user.id&&<button className={currentVote===p.id?'smallBtn chosen':'smallBtn'} onClick={()=>voteCompetition(p,competitionType)}>{currentVote===p.id?'Meu voto':'Votar'}</button>}</div>)}</div></div>
     </>
   }
 
@@ -814,7 +841,7 @@ export default function Home(){
 
   function SettingsScreen(){return <><PageHeader title="Configurações" subtitle="Edite seu perfil. Sua cidade permanece vinculada ao cadastro."/><form className="panel stackForm settingsForm" onSubmit={saveSettings}><div className="mediaSettings"><div><Avatar profile={{avatar_url:settings.avatar_url}} name={settings.full_name} size="xl"/><label className="uploadBtn">{avatarUploading?'Enviando...':'Trocar foto'}<input type="file" hidden accept="image/*" onChange={e=>uploadProfileImage('avatar_url',e.target.files?.[0])}/></label></div><div className="coverPreview" style={settings.cover_url?{backgroundImage:`url(${settings.cover_url})`}:{}}><label className="uploadBtn">{coverUploading?'Enviando...':'Trocar capa'}<input type="file" hidden accept="image/*" onChange={e=>uploadProfileImage('cover_url',e.target.files?.[0])}/></label></div></div><div className="formGrid"><label>Nome completo<input required value={settings.full_name} onChange={e=>setSettings({...settings,full_name:e.target.value})}/></label><label>@Usuário<input required value={settings.username} onChange={e=>setSettings({...settings,username:e.target.value})}/></label><label>Atividade / profissão<input value={settings.activity} onChange={e=>setSettings({...settings,activity:e.target.value})} placeholder="Ex.: Comerciante, Estudante"/></label><label>Gênero<select value={settings.gender} onChange={e=>setSettings({...settings,gender:e.target.value})}><option value="">Não informar</option><option value="homem">Homem</option><option value="mulher">Mulher</option><option value="outros">Outros</option></select></label><label>Telefone público<input value={settings.public_phone} onChange={e=>setSettings({...settings,public_phone:e.target.value})}/></label><label>Site<input value={settings.website} onChange={e=>setSettings({...settings,website:e.target.value})}/></label><label>Cidade<input value={profile.city||''} disabled/></label><label>Estado<input value={profile.state||''} disabled/></label></div><label>Bio<textarea rows={4} value={settings.bio} onChange={e=>setSettings({...settings,bio:e.target.value})} placeholder="Conte um pouco sobre você"/></label><button className="primaryBtn" disabled={busy}>Salvar alterações</button></form></>}
 
-  function ExploreScreen(){return <><PageHeader title="Explorar Cidade" subtitle="Visite qualquer cidade do Brasil sem alterar sua cidade de cadastro."/><div className="panel"><div className="exploreControls"><select value={exploreStateId} onChange={handleExploreState}><option value="">Escolha o estado</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={exploreCity} disabled={!exploreStateId||exploreBusy} onChange={e=>setExploreCity(e.target.value)}><option value="">Escolha a cidade</option>{exploreCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="primaryBtn" disabled={!exploreCity||exploreBusy} onClick={explore}>{exploreBusy?'Carregando...':'Explorar'}</button></div></div>{exploreCity&&exploreData.posts.length+exploreData.people.length+exploreData.businesses.length>=0&&<><div className="cityVisitHero"><span>VISITANDO</span><h1>{exploreCity} - {exploreState}</h1><p>Seu cadastro continua em {cityLabel}.</p></div><div className="panel"><h2>Publicar no mural desta cidade</h2>{Composer({text:explorePostText,setText:setExplorePostText,allowPhoto:false,onPublish:()=>publishPost({text:explorePostText,file:null,city:exploreCity,state:exploreState,after:explore})})}</div><div className="twoCol"><div className="panel"><h2>Pessoas em destaque</h2>{!exploreData.people.length&&<p className="muted">Nenhuma pessoa cadastrada nesta cidade ainda.</p>}{exploreData.people.slice(0,10).map((p,i)=><div className="listRow" key={p.id}><b>#{i+1}</b><Avatar profile={p}/><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></div>)}</div><div className="panel"><h2>Comércios</h2>{!exploreData.businesses.length&&<p className="muted">Nenhum comércio cadastrado nesta cidade ainda.</p>}{exploreData.businesses.slice(0,10).map(b=><button className="listRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name}</b><small>{b.category||'Comércio local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}</div></div><h2 className="sectionHeading">Mural de {exploreCity}</h2>{exploreData.posts.length?exploreData.posts.map(p=>PostCard({post:p,authors:exploreData.authors,bizMap:exploreData.postBusinesses,interactive:false})):<Empty title="Ainda não há publicações nesta cidade."/>}</>}</>}
+  function ExploreScreen(){return <><PageHeader title="Explorar Cidade" subtitle="Visite qualquer cidade do Brasil sem alterar sua cidade de cadastro."/><div className="panel"><div className="exploreControls"><select value={exploreStateId} onChange={handleExploreState}><option value="">Escolha o estado</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={exploreCity} disabled={!exploreStateId||exploreBusy} onChange={e=>setExploreCity(e.target.value)}><option value="">Escolha a cidade</option>{exploreCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="primaryBtn" disabled={!exploreCity||exploreBusy} onClick={explore}>{exploreBusy?'Carregando...':'Explorar'}</button></div></div>{exploreCity&&exploreData.posts.length+exploreData.people.length+exploreData.businesses.length>=0&&<><div className="cityVisitHero"><span>VISITANDO</span><h1>{exploreCity} - {exploreState}</h1><p>Seu cadastro continua em {cityLabel}.</p></div><div className="panel"><h2>Publicar nesta cidade</h2>{Composer({text:explorePostText,setText:setExplorePostText,allowPhoto:false,onPublish:()=>publishPost({text:explorePostText,file:null,city:exploreCity,state:exploreState,after:explore})})}</div><div className="twoCol"><div className="panel"><h2>Pessoas em destaque</h2>{!exploreData.people.length&&<p className="muted">Nenhuma pessoa cadastrada nesta cidade ainda.</p>}{exploreData.people.slice(0,10).map((p,i)=><div className="listRow" key={p.id}><b>#{i+1}</b><Avatar profile={p}/><div className="grow"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><small>@{p.username}</small></div><strong>{p.followers_count||0}</strong></div>)}</div><div className="panel"><h2>Comércios</h2>{!exploreData.businesses.length&&<p className="muted">Nenhum comércio cadastrado nesta cidade ainda.</p>}{exploreData.businesses.slice(0,10).map(b=><button className="listRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name}</b><small>{b.category||'Comércio local'}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}</div></div><h2 className="sectionHeading">Publicações de {exploreCity}</h2>{exploreData.posts.length?exploreData.posts.map(p=>PostCard({post:p,authors:exploreData.authors,bizMap:exploreData.postBusinesses,interactive:false})):<Empty title="Ainda não há publicações nesta cidade."/>}</>}</>}
 
   function MessagesScreen(){
     const conversations={};
@@ -827,39 +854,75 @@ export default function Home(){
   function OwnerPanelScreen(){
     if(!isAdmin)return <Empty title="Acesso restrito.">Somente o dono e administradores autorizados podem acessar esta área.</Empty>;
     const now=Date.now();
-    const onlineIds=new Set(ownerPresence.filter(x=>now-new Date(x.last_seen).getTime()<5*60*1000).map(x=>x.user_id));
     const today=new Date(); today.setHours(0,0,0,0);
     const todayCount=list=>list.filter(x=>new Date(x.created_at||0)>=today).length;
-    const filteredUsers=ownerUsers.filter(u=>{
-      const q=ownerSearch.trim().toLowerCase();
-      const text=`${u.full_name||''} ${u.username||''} ${u.city||''} ${u.state||''}`.toLowerCase();
-      return (!q||text.includes(q))&&(!ownerStateFilter||u.state===ownerStateFilter)&&(!ownerCityFilter||u.city===ownerCityFilter);
+    const locationMatch=row=>(!ownerStateFilter||String(row?.state||'').toUpperCase()===String(ownerStateFilter).toUpperCase())&&(!ownerCityFilter||locationKey(row?.city)===locationKey(ownerCityFilter));
+    const monitoredUsers=ownerUsers.filter(locationMatch);
+    const monitoredBusinesses=ownerBusinesses.filter(locationMatch);
+    const monitoredPresence=ownerPresence.filter(locationMatch);
+    const monitoredReports=ownerReports.filter(r=>{
+      if(!ownerStateFilter&&!ownerCityFilter)return true;
+      if(locationMatch(r))return true;
+      const linkedId=r.target_user_id||r.reported_user_id||r.user_id||r.reporter_id||((r.target_type==='profile'||r.target_type==='user')?r.target_id:null);
+      const linkedUser=ownerUsers.find(x=>x.id===linkedId);
+      return linkedUser?locationMatch(linkedUser):false;
     });
-    const statesAdmin=[...new Set(ownerUsers.map(x=>x.state).filter(Boolean))].sort();
-    const citiesAdmin=[...new Set(ownerUsers.filter(x=>!ownerStateFilter||x.state===ownerStateFilter).map(x=>x.city).filter(Boolean))].sort();
-    const stats=[['Online agora',onlineIds.size],['Usuários',ownerUsers.length],['Cadastros hoje',todayCount(ownerUsers)],['Publicações hoje',todayCount(ownerPosts)],['Comércios',ownerBusinesses.length],['Chamados abertos',ownerTickets.filter(x=>x.status!=='resolvido').length],['Denúncias',ownerReports.filter(x=>!['resolved','dismissed'].includes(x.status)).length],['Admins',ownerUsers.filter(x=>['admin','moderator'].includes(String(x.role||'').toLowerCase())).length]];
-    const rankMap={}; for(const v of ownerVotes){const k=v.candidate_id||v.user_id||v.profile_id;if(k)rankMap[k]=(rankMap[k]||0)+1}
-    const topRank=Object.entries(rankMap).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([id,count])=>({user:ownerUsers.find(x=>x.id===id),count}));
+    const monitoredTickets=ownerTickets.filter(t=>{
+      if(!ownerStateFilter&&!ownerCityFilter)return true;
+      const u=ownerUsers.find(x=>x.id===t.user_id);
+      return locationMatch(u||{});
+    });
+    const onlineIds=new Set(monitoredPresence.filter(x=>now-new Date(x.last_seen).getTime()<5*60*1000).map(x=>x.user_id));
+    const filteredUsers=monitoredUsers.filter(u=>{
+      const q=ownerSearch.trim().toLowerCase();
+      const text=`${u.full_name||''} ${u.username||''} ${u.email||''} ${u.city||''} ${u.state||''}`.toLowerCase();
+      return !q||text.includes(q);
+    });
+    const filteredBusinesses=monitoredBusinesses.filter(b=>{
+      const q=ownerSearch.trim().toLowerCase();
+      const text=`${b.name||''} ${b.username||''} ${b.category||''} ${b.city||''} ${b.state||''}`.toLowerCase();
+      return !q||text.includes(q);
+    });
+    const scopeLabel=ownerStateFilter?(ownerCityFilter?`${ownerCityFilter} - ${ownerStateFilter}`:`Estado ${ownerStateFilter}`):'Brasil inteiro';
+    const openReports=monitoredReports.filter(x=>!['resolved','dismissed'].includes(String(x.status||'')));
+    const openTickets=monitoredTickets.filter(x=>x.status!=='resolvido');
+    const admins=ownerUsers.filter(x=>['admin','moderator'].includes(String(x.role||'').toLowerCase()));
+    const stats=[['Online agora',onlineIds.size],['Usuários',monitoredUsers.length],['Cadastros hoje',todayCount(monitoredUsers)],['Comércios',monitoredBusinesses.length],['Chamados abertos',openTickets.length],['Denúncias',openReports.length],['Admins',admins.length]];
+
+    const rankVotes=ownerVotes.filter(v=>{
+      if(v.period_type!==ownerRankingPeriod||v.period_key!==periodKey(ownerRankingPeriod))return false;
+      if(ownerStateFilter&&stateKey(v.state_key||v.state)!==stateKey(ownerStateFilter))return false;
+      if(ownerCityFilter&&cityKey(v.city_key||v.city)!==cityKey(ownerCityFilter))return false;
+      return true;
+    });
+    const rankMap={};
+    for(const v of rankVotes){const k=v.candidate_id||v.user_id||v.profile_id;if(k)rankMap[k]=(rankMap[k]||0)+1}
+    const topRank=Object.entries(rankMap).map(([id,count])=>({user:ownerUsers.find(x=>x.id===id),count})).filter(x=>x.user&&locationMatch(x.user)).sort((a,b)=>b.count-a.count||(b.user?.followers_count||0)-(a.user?.followers_count||0)).slice(0,50);
+    const monitoredLive=ownerLiveEvents.filter(e=>locationMatch(e.row||{}));
+
+    const locationFilters=<div className="nationalMonitorBar"><div><b>🗺️ Monitoramento nacional</b><small>{scopeLabel}</small></div><select value={ownerStateId} onChange={handleOwnerStateChange}><option value="">Todos os estados do Brasil</option>{states.map(s=><option key={s.id} value={s.id}>{s.nome} ({s.sigla})</option>)}</select><select value={ownerCityFilter} disabled={!ownerStateId||ownerLocationBusy} onChange={e=>setOwnerCityFilter(e.target.value)}><option value="">{ownerLocationBusy?'Carregando cidades...':'Todas as cidades'}</option>{ownerCities.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</select><button className="secondaryBtn" onClick={()=>{setOwnerStateId('');setOwnerStateFilter('');setOwnerCityFilter('');setOwnerCities([])}}>Brasil inteiro</button></div>;
+
     return <>
       <PageHeader title="Central do Dono" subtitle="Administração e monitoramento nacional do CIDARANK em tempo real." actions={<button className="primaryBtn" onClick={loadOwnerData}>{ownerBusy?'Atualizando...':'Atualizar agora'}</button>}/>
       <div className="ownerRealtimeBar"><span className={ownerRealtimeConnected?'liveDot on':'liveDot'}></span><b>{ownerRealtimeConnected?'TEMPO REAL CONECTADO':'TEMPO REAL AGUARDANDO'}</b><small>Última leitura: {ownerHealth.lastCheck?fmtDate(ownerHealth.lastCheck):'—'}</small></div>
       <div className="ownerTabs">{[
         ['dashboard','📊 Visão geral'],['tempo','⚡ Tempo real'],['usuarios','👥 Usuários'],['moderacao','🛡️ Moderação'],['comercios','🏪 Comércios'],['rankings','🏆 Rankings'],['suporte','🎫 Suporte'],['equipe','👑 Equipe'],['banner','🖼️ Banner'],['auditoria','📜 Auditoria'],['sistema','⚙️ Sistema']
       ].map(([id,label])=><button key={id} className={ownerTab===id?'active':''} onClick={()=>setOwnerTab(id)}>{label}</button>)}</div>
+      {['dashboard','tempo','usuarios','moderacao','comercios','rankings','suporte'].includes(ownerTab)&&locationFilters}
 
-      {ownerTab==='dashboard'&&<><div className="ownerStats deep">{stats.map(([label,value])=><div className="ownerStat" key={label}><strong>{value}</strong><span>{label}</span></div>)}</div><div className="adminGrid"><div className="panel"><h2>Conta proprietária</h2><div className="ownerIdentity"><Avatar profile={profile} name={displayName} size="lg"/><div><b>{displayName}</b><small>{session?.user?.email}</small><span>{isOwner?'♛ DONO PRINCIPAL':'ADMINISTRADOR'}</span></div></div><p className="muted">O dono principal não pode ser removido por administradores.</p></div><div className="panel"><h2>Alertas</h2><div className="healthLine"><span>Contas suspensas</span><b>{ownerUsers.filter(x=>x.is_suspended).length}</b></div><div className="healthLine"><span>Comércios suspensos</span><b>{ownerBusinesses.filter(x=>x.is_suspended).length}</b></div><div className="healthLine"><span>Chamados pendentes</span><b>{ownerTickets.filter(x=>x.status!=='resolvido').length}</b></div><div className="healthLine"><span>Denúncias pendentes</span><b>{ownerReports.filter(x=>!['resolved','dismissed'].includes(x.status)).length}</b></div></div><div className="panel adminWide"><h2>Atividade administrativa recente</h2>{ownerLogs.slice(0,12).map(l=><div className="adminActivity" key={l.id}><b>{l.action}</b><span>{fmtDate(l.created_at)}</span><small>{l.target_type}{l.target_id?` • ${l.target_id}`:''}</small></div>)}{!ownerLogs.length&&<p className="muted">Nenhuma ação administrativa registrada ainda.</p>}</div></div></>}
+      {ownerTab==='dashboard'&&<><div className="scopeTitle"><span>VISÃO ATUAL</span><b>{scopeLabel}</b></div><div className="ownerStats deep">{stats.map(([label,value])=><div className="ownerStat" key={label}><strong>{value}</strong><span>{label}</span></div>)}</div><div className="adminGrid"><div className="panel"><h2>Conta proprietária</h2><div className="ownerIdentity"><Avatar profile={profile} name={displayName} size="lg"/><div><b>{displayName}</b><small>{session?.user?.email}</small><span>{isOwner?'♛ DONO PRINCIPAL':'ADMINISTRADOR'}</span></div></div><p className="muted">O dono principal não pode ser removido por administradores.</p></div><div className="panel"><h2>Alertas principais</h2><div className="healthLine"><span>Contas suspensas</span><b>{monitoredUsers.filter(x=>x.is_suspended).length}</b></div><div className="healthLine"><span>Comércios suspensos</span><b>{monitoredBusinesses.filter(x=>x.is_suspended).length}</b></div><div className="healthLine"><span>Chamados pendentes</span><b>{openTickets.length}</b></div><div className="healthLine"><span>Denúncias pendentes</span><b>{openReports.length}</b></div></div></div></>}
 
-      {ownerTab==='tempo'&&<div className="adminGrid"><div className="panel"><h2>Usuários online agora</h2>{ownerPresence.filter(x=>onlineIds.has(x.user_id)).slice(0,50).map(x=>{const u=ownerUsers.find(y=>y.id===x.user_id)||{};return <div className="listRow" key={x.user_id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'}</b><small>{x.page||'CIDARANK'} • {x.city||''} {x.state||''}</small></div><span className="onlineBadge">ONLINE</span></div>})}{!onlineIds.size&&<p className="muted">Nenhum usuário ativo nos últimos 5 minutos.</p>}</div><div className="panel"><h2>Eventos ao vivo</h2>{ownerLiveEvents.map(e=><div className="liveEvent" key={e.id}><b>{e.type}</b><small>{fmtDate(e.at)}</small><span>{e.row?.city||''} {e.row?.state||''}</span></div>)}{!ownerLiveEvents.length&&<p className="muted">Aguardando novos eventos do site.</p>}</div></div>}
+      {ownerTab==='tempo'&&<div className="adminGrid"><div className="panel"><h2>Usuários online agora — {scopeLabel}</h2>{monitoredPresence.filter(x=>onlineIds.has(x.user_id)).slice(0,100).map(x=>{const u=ownerUsers.find(y=>y.id===x.user_id)||{};return <div className="listRow" key={x.user_id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'}</b><small>{x.page||'CIDARANK'} • {x.city||''} {x.state||''}</small></div><span className="onlineBadge">ONLINE</span></div>})}{!onlineIds.size&&<p className="muted">Nenhum usuário ativo neste recorte nos últimos 5 minutos.</p>}</div><div className="panel"><h2>Eventos importantes ao vivo</h2><p className="muted">Para não lotar a administração, publicações comuns não entram aqui.</p>{monitoredLive.slice(0,40).map(e=><div className="liveEvent" key={e.id}><b>{e.type}</b><small>{fmtDate(e.at)}</small><span>{e.row?.city||''} {e.row?.state||''}</span></div>)}{!monitoredLive.length&&<p className="muted">Aguardando novos cadastros, comércios ou chamados.</p>}</div></div>}
 
-      {ownerTab==='usuarios'&&<div className="panel"><div className="adminFilters"><input placeholder="Pesquisar nome, @usuário ou cidade" value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)}/><select value={ownerStateFilter} onChange={e=>{setOwnerStateFilter(e.target.value);setOwnerCityFilter('')}}><option value="">Todos os estados</option>{statesAdmin.map(x=><option key={x}>{x}</option>)}</select><select value={ownerCityFilter} onChange={e=>setOwnerCityFilter(e.target.value)}><option value="">Todas as cidades</option>{citiesAdmin.map(x=><option key={x}>{x}</option>)}</select></div><p className="muted">{filteredUsers.length} usuário(s) encontrado(s).</p><div className="ownerUserList">{filteredUsers.map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'} {u.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>} {onlineIds.has(u.id)&&<span className="onlineBadge">ONLINE</span>}</b><small>@{u.username||'semusuario'} • {u.city||'Sem cidade'} - {u.state||''}</small><small>{String(u.role||'user').toUpperCase()} {u.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleUser(u,'verified')}>{u.verified?'Remover verificação':'Verificar'}</button>{isOwner&&u.id!==session.user.id&&<button onClick={()=>ownerToggleUser(u,'role')}>{String(u.role||'').toLowerCase()==='admin'?'Remover admin':'Tornar admin'}</button>}<button className={u.is_suspended?'safeBtn':'dangerBtn'} disabled={u.id===session.user.id||isOwnerEmail(u.email)} onClick={()=>ownerToggleUser(u,'is_suspended')}>{u.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div></div>}
+      {ownerTab==='usuarios'&&<div className="panel"><div className="adminSearchOnly"><input placeholder="Pesquisar nome, @usuário, e-mail ou cidade" value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)}/></div><p className="muted">{filteredUsers.length} usuário(s) em {scopeLabel}.</p><div className="ownerUserList">{filteredUsers.map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username||'Usuário'} {u.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>} {onlineIds.has(u.id)&&<span className="onlineBadge">ONLINE</span>}</b><small>@{u.username||'semusuario'} • {u.city||'Sem cidade'} - {u.state||''}</small><small>{String(u.role||'user').toUpperCase()} {u.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleUser(u,'verified')}>{u.verified?'Remover verificação':'Verificar'}</button>{isOwner&&u.id!==session.user.id&&<button onClick={()=>ownerToggleUser(u,'role')}>{String(u.role||'').toLowerCase()==='admin'?'Remover admin':'Tornar admin'}</button>}<button className={u.is_suspended?'safeBtn':'dangerBtn'} disabled={u.id===session.user.id||isOwnerEmail(u.email)} onClick={()=>ownerToggleUser(u,'is_suspended')}>{u.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div></div>}
 
-      {ownerTab==='moderacao'&&<div className="adminGrid"><div className="panel"><h2>Publicações recentes</h2><div className="ownerPostList">{ownerPosts.map(p=><div className="ownerPostRow" key={p.id}><div className="grow"><b>{p.city||'Cidade'} - {p.state||''}</b><p>{p.content||'(publicação com imagem)'}</p><small>{fmtDate(p.created_at)}</small></div><button className="dangerBtn" onClick={()=>ownerDeletePost(p)}>Excluir</button></div>)}</div></div><div className="panel"><h2>Fila de denúncias</h2>{ownerReports.map(r=><div className="reportRow" key={r.id}><b>{r.reason||r.category||'Denúncia'}</b><small>{r.target_type} • {fmtDate(r.created_at)}</small><p>{r.details||'Sem detalhes.'}</p><div className="ownerActions"><button className="safeBtn" onClick={()=>ownerResolveReport(r,'resolved')}>Resolver</button><button onClick={()=>ownerResolveReport(r,'dismissed')}>Arquivar</button></div></div>)}{!ownerReports.length&&<p className="muted">Nenhuma denúncia registrada.</p>}</div></div>}
+      {ownerTab==='moderacao'&&<div className="panel"><h2>Fila de denúncias</h2><p className="muted">A administração não carrega todas as publicações do Brasil. Só conteúdo denunciado ou sinalizado precisa entrar na fila.</p>{monitoredReports.map(r=><div className="reportRow" key={r.id}><b>{r.reason||r.category||'Denúncia'}</b><small>{r.target_type} • {fmtDate(r.created_at)}</small><p>{r.details||'Sem detalhes.'}</p><div className="ownerActions"><button className="safeBtn" onClick={()=>ownerResolveReport(r,'resolved')}>Resolver</button><button onClick={()=>ownerResolveReport(r,'dismissed')}>Arquivar</button></div></div>)}{!monitoredReports.length&&<p className="muted">Nenhuma denúncia registrada neste recorte.</p>}</div>}
 
-      {ownerTab==='comercios'&&<div className="panel"><h2>Gerenciamento de comércios</h2><div className="ownerUserList">{ownerBusinesses.map(b=><div className="ownerUserRow" key={b.id}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name} {b.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>}</b><small>{b.category||'Comércio'} • {b.city||''} - {b.state||''}</small><small>★ {Number(b.rating_average||0).toFixed(1)} • {b.reviews_count||0} avaliações {b.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleBusiness(b,'verified')}>{b.verified?'Remover selo':'Verificar'}</button><button className={b.is_suspended?'safeBtn':'dangerBtn'} onClick={()=>ownerToggleBusiness(b,'is_suspended')}>{b.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div></div>}
+      {ownerTab==='comercios'&&<div className="panel"><div className="adminSearchOnly"><input placeholder="Pesquisar comércio ou categoria" value={ownerSearch} onChange={e=>setOwnerSearch(e.target.value)}/></div><p className="muted">{filteredBusinesses.length} comércio(s) em {scopeLabel}.</p><div className="ownerUserList">{filteredBusinesses.map(b=><div className="ownerUserRow" key={b.id}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name} {b.verified&&<span className="verifiedBadge">✓ VERIFICADO</span>}</b><small>{b.category||'Comércio'} • {b.city||''} - {b.state||''}</small><small>★ {Number(b.rating_average||0).toFixed(1)} • {b.reviews_count||0} avaliações {b.is_suspended?'• SUSPENSO':''}</small></div><div className="ownerActions"><button onClick={()=>ownerToggleBusiness(b,'verified')}>{b.verified?'Remover selo':'Verificar'}</button><button className={b.is_suspended?'safeBtn':'dangerBtn'} onClick={()=>ownerToggleBusiness(b,'is_suspended')}>{b.is_suspended?'Reativar':'Suspender'}</button></div></div>)}</div></div>}
 
-      {ownerTab==='rankings'&&<div className="adminGrid"><div className="panel"><h2>Ranking monitorado</h2><p className="muted">Contagem real dos registros de voto disponíveis no banco. O painel não altera posições manualmente.</p>{topRank.map((r,i)=><div className="listRow" key={r.user?.id||i}><b>#{i+1}</b><Avatar profile={r.user||{}}/><div className="grow"><b>{r.user?.full_name||r.user?.username||'Usuário'}</b><small>{r.user?.city||''} - {r.user?.state||''}</small></div><strong>{r.count}</strong></div>)}{!topRank.length&&<p className="muted">Ainda não há votos suficientes.</p>}</div><div className="panel"><h2>Antifraude básico</h2><p className="muted">Sinais para revisão humana.</p><div className="healthLine"><span>Total de votos carregados</span><b>{ownerVotes.length}</b></div><div className="healthLine"><span>Usuários com conta nova hoje</span><b>{todayCount(ownerUsers)}</b></div><div className="healthLine"><span>Contas suspensas</span><b>{ownerUsers.filter(x=>x.is_suspended).length}</b></div><p className="muted">A próxima etapa pode adicionar regras automáticas de velocidade de voto, múltiplas contas e padrões suspeitos.</p></div></div>}
+      {ownerTab==='rankings'&&<><div className="rankingAdminHead"><div><h2>Monitoramento dos rankings</h2><p>{scopeLabel} • dados reais de votos registrados</p></div><div className="segmented"><button className={ownerRankingPeriod==='week'?'active':''} onClick={()=>setOwnerRankingPeriod('week')}>Semana</button><button className={ownerRankingPeriod==='month'?'active':''} onClick={()=>setOwnerRankingPeriod('month')}>Mês</button><button className={ownerRankingPeriod==='year'?'active':''} onClick={()=>setOwnerRankingPeriod('year')}>Ano</button></div></div><div className="adminGrid"><div className="panel"><h2>{ownerRankingPeriod==='week'?'Popular da Semana':ownerRankingPeriod==='month'?'Popular do Mês':'Popular do Ano'}</h2>{topRank.map((r,i)=><div className="listRow" key={r.user?.id||i}><b>#{i+1}</b><Avatar profile={r.user||{}}/><div className="grow"><b>{r.user?.full_name||r.user?.username||'Usuário'}</b><small>{r.user?.city||''} - {r.user?.state||''}</small></div><strong>{r.count} voto(s)</strong></div>)}{!topRank.length&&<p className="muted">Ainda não há votos neste período para {scopeLabel}.</p>}</div><div className="panel"><h2>Antifraude básico</h2><div className="healthLine"><span>Votos neste período/local</span><b>{rankVotes.length}</b></div><div className="healthLine"><span>Cadastros hoje</span><b>{todayCount(monitoredUsers)}</b></div><div className="healthLine"><span>Contas suspensas</span><b>{monitoredUsers.filter(x=>x.is_suspended).length}</b></div><p className="muted">O dono monitora, mas não altera manualmente a posição do ranking.</p></div></div></>}
 
-      {ownerTab==='suporte'&&<div className="panel"><h2>Chamados e denúncias</h2>{ownerTickets.map(t=>{const person=messagePeople[t.user_id]||{};return <div className="ownerTicket" key={t.id}><div className="ownerTicketHead"><div><b>{t.subject}</b><small>{person.full_name||person.username||'Usuário'} • {t.category} • {fmtDate(t.created_at)}</small></div><span className={`status ${t.status}`}>{String(t.status||'aberto').replace('_',' ')}</span></div><p>{t.message}</p>{t.image_url&&<img src={t.image_url} alt="Anexo do chamado"/>}<textarea rows={3} value={ownerReply[t.id]??t.admin_response??''} onChange={e=>setOwnerReply(v=>({...v,[t.id]:e.target.value}))} placeholder="Resposta do dono/admin..."/><div className="ownerActions"><button onClick={()=>ownerReplyTicket(t,'em_analise')}>Salvar / Em análise</button><button className="safeBtn" onClick={()=>ownerReplyTicket(t,'resolvido')}>Responder e resolver</button></div></div>})}{!ownerTickets.length&&<p className="muted">Nenhum chamado recebido.</p>}</div>}
+      {ownerTab==='suporte'&&<div className="panel"><h2>Chamados e denúncias</h2>{monitoredTickets.map(t=>{const person=messagePeople[t.user_id]||{};return <div className="ownerTicket" key={t.id}><div className="ownerTicketHead"><div><b>{t.subject}</b><small>{person.full_name||person.username||'Usuário'} • {t.category} • {fmtDate(t.created_at)}</small></div><span className={`status ${t.status}`}>{String(t.status||'aberto').replace('_',' ')}</span></div><p>{t.message}</p>{t.image_url&&<img src={t.image_url} alt="Anexo do chamado"/>}<textarea rows={3} value={ownerReply[t.id]??t.admin_response??''} onChange={e=>setOwnerReply(v=>({...v,[t.id]:e.target.value}))} placeholder="Resposta do dono/admin..."/><div className="ownerActions"><button onClick={()=>ownerReplyTicket(t,'em_analise')}>Salvar / Em análise</button><button className="safeBtn" onClick={()=>ownerReplyTicket(t,'resolvido')}>Responder e resolver</button></div></div>})}{!monitoredTickets.length&&<p className="muted">Nenhum chamado recebido neste recorte.</p>}</div>}
 
       {ownerTab==='equipe'&&<div className="panel"><h2>Equipe administrativa</h2><p className="muted">Somente o dono principal pode conceder ou remover acesso de administrador.</p>{ownerUsers.filter(x=>['admin','moderator'].includes(String(x.role||'').toLowerCase())||x.id===session.user.id).map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username}</b><small>@{u.username||''} • {u.id===session.user.id&&isOwner?'DONO PRINCIPAL':String(u.role||'admin').toUpperCase()}</small></div>{isOwner&&u.id!==session.user.id&&<button className="dangerBtn" onClick={()=>ownerToggleUser(u,'role')}>Remover admin</button>}</div>)}</div>}
 
@@ -867,7 +930,7 @@ export default function Home(){
 
       {ownerTab==='auditoria'&&<div className="panel"><h2>Histórico administrativo</h2><p className="muted">Registro de ações importantes feitas pelo dono e administradores.</p>{ownerLogs.map(l=>{const actor=messagePeople[l.actor_id]||ownerUsers.find(x=>x.id===l.actor_id)||{};return <div className="auditRow" key={l.id}><div><b>{l.action}</b><span>{actor.full_name||actor.username||'Administrador'}</span></div><small>{l.target_type}{l.target_id?` • ${l.target_id}`:''} • {fmtDate(l.created_at)}</small></div>})}{!ownerLogs.length&&<p className="muted">Nenhum registro ainda.</p>}</div>}
 
-      {ownerTab==='sistema'&&<div className="adminGrid"><div className="panel"><h2>Saúde do sistema</h2><div className="healthLine"><span>Banco de dados</span><b className={ownerHealth.database==='ok'?'healthOk':'healthWarn'}>{ownerHealth.database==='ok'?'OPERACIONAL':'VERIFICAR'}</b></div><div className="healthLine"><span>Autenticação</span><b className={ownerHealth.auth==='ok'?'healthOk':'healthWarn'}>{ownerHealth.auth==='ok'?'OPERACIONAL':'VERIFICAR'}</b></div><div className="healthLine"><span>Tempo real</span><b className={ownerRealtimeConnected?'healthOk':'healthWarn'}>{ownerRealtimeConnected?'CONECTADO':'AGUARDANDO'}</b></div><div className="healthLine"><span>Última checagem</span><b>{ownerHealth.lastCheck?fmtDate(ownerHealth.lastCheck):'—'}</b></div></div><div className="panel"><h2>Regras de segurança</h2><p className="muted">✓ Dono principal protegido</p><p className="muted">✓ Banner restrito ao dono</p><p className="muted">✓ Ações administrativas registradas</p><p className="muted">✓ Suspensão de usuários e comércios</p><p className="muted">✓ RLS do Supabase para administração</p></div></div>}
+      {ownerTab==='sistema'&&<div className="adminGrid"><div className="panel"><h2>Saúde do sistema</h2><div className="healthLine"><span>Banco de dados</span><b className={ownerHealth.database==='ok'?'healthOk':'healthWarn'}>{ownerHealth.database==='ok'?'OPERACIONAL':'VERIFICAR'}</b></div><div className="healthLine"><span>Autenticação</span><b className={ownerHealth.auth==='ok'?'healthOk':'healthWarn'}>{ownerHealth.auth==='ok'?'OPERACIONAL':'VERIFICAR'}</b></div><div className="healthLine"><span>Tempo real</span><b className={ownerRealtimeConnected?'healthOk':'healthWarn'}>{ownerRealtimeConnected?'CONECTADO':'AGUARDANDO'}</b></div><div className="healthLine"><span>Última checagem</span><b>{ownerHealth.lastCheck?fmtDate(ownerHealth.lastCheck):'—'}</b></div></div><div className="panel"><h2>Cobertura nacional</h2><p className="muted">✓ 27 unidades federativas carregadas pela API oficial do IBGE</p><p className="muted">✓ Municípios carregados por estado, incluindo todas as cidades disponíveis no IBGE</p><p className="muted">✓ Filtros nacionais em usuários, tempo real, comércios e rankings</p><p className="muted">✓ Dono principal protegido e auditoria administrativa</p></div></div>}
     </>
   }
 
@@ -875,7 +938,6 @@ export default function Home(){
 
   function renderScreen(){
     switch(active){
-      case 'Mural': return MuralScreen();
       case 'Populares': return PopularScreen();
       case 'Comércios': return BusinessScreen();
       case 'Explorar Cidade': return ExploreScreen();

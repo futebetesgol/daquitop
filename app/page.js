@@ -338,10 +338,25 @@ export default function Home(){
     });
   }
 
+  async function fetchAllCityProfiles(city,state){
+    const all=[]; const pageSize=1000; let from=0;
+    while(true){
+      const {data,error}=await supabase.from('profiles').select('*')
+        .eq('city_key',cityKey(city)).eq('state_key',stateKey(state))
+        .order('followers_count',{ascending:false}).range(from,from+pageSize-1);
+      if(error){console.error('Erro ao carregar perfis da cidade:',error);break}
+      const batch=data||[]; all.push(...batch);
+      if(batch.length<pageSize)break;
+      from+=pageSize;
+      if(from>=50000)break;
+    }
+    return all;
+  }
+
   async function loadCity(city,state){
     if(!city||!state)return;
-    const [{data:peopleData},{data:businessData}]=await Promise.all([
-      supabase.from('profiles').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state)).order('followers_count',{ascending:false}).limit(100),
+    const [peopleData,{data:businessData}]=await Promise.all([
+      fetchAllCityProfiles(city,state),
       supabase.from('businesses').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state)).order('rating_average',{ascending:false}).order('reviews_count',{ascending:false}).limit(100)
     ]);
     const cleanPeople=(peopleData||[]).filter(x=>x.account_type!=='business');
@@ -428,8 +443,20 @@ export default function Home(){
 
   async function loadCompetitions(city,state){
     if(!city||!state)return;
-    const {data}=await supabase.from('daquitop_competition_votes').select('*').eq('city_key',cityKey(city)).eq('state_key',stateKey(state));
-    setCompetitionVotes(data||[]);
+    const all=[]; const pageSize=1000; let from=0;
+    const startOfYear=new Date(new Date().getFullYear(),0,1).toISOString();
+    while(true){
+      const {data,error}=await supabase.from('daquitop_competition_votes').select('*')
+        .eq('city_key',cityKey(city)).eq('state_key',stateKey(state))
+        .gte('created_at',startOfYear).order('created_at',{ascending:true})
+        .range(from,from+pageSize-1);
+      if(error){console.error('Erro ao carregar ranking:',error);break}
+      const batch=data||[]; all.push(...batch);
+      if(batch.length<pageSize)break;
+      from+=pageSize;
+      if(from>=100000)break;
+    }
+    setCompetitionVotes(all);
   }
 
   async function loadSiteSettings(){
@@ -996,6 +1023,7 @@ export default function Home(){
     const popularRank=[...people].filter(p=>!isInstitutionalOwner(p)&&(p.followers_count||0)>0).sort((a,b)=>(b.followers_count||0)-(a.followers_count||0));
     const rank=rankType?competitionRanking(rankType):popularView==='city'?popularRank:[];
     const currentVote=rankType==='week'?myVote('week'):null;
+    const weeklyCandidates=rankType==='week'?[...people].filter(p=>!isInstitutionalOwner(p)&&p.account_type!=='business').sort((a,b)=>(b.followers_count||0)-(a.followers_count||0)||String(a.full_name||a.username||'').localeCompare(String(b.full_name||b.username||''),'pt-BR')):[];
     const top3=rank.slice(0,3), order=top3.length===3?[top3[1],top3[0],top3[2]]:top3;
     const myPos=rank.findIndex(p=>p.id===session.user.id);
     const metric=p=>popularView==='city'?`${p.followers_count||0} seguidores`:rankType==='week'?`${p.votes||0} voto(s)`:`${p.points||0} pontos`;
@@ -1006,7 +1034,8 @@ export default function Home(){
       </div></div>
       <div className="panel rankHow"><h2>Como funciona o CIDARANK?</h2><p><b>Mais Popular:</b> seguidores válidos. <b>Semana:</b> votação. <b>Mês:</b> desempenho das semanas. <b>Ano:</b> resultados mensais. Estado e Brasil já fazem parte da estrutura nacional e serão ativados futuramente.</p><div className="rankFlow"><span>VOTAÇÃO SEMANAL</span><b>→</b><span>RESULTADO</span><b>→</b><span>MÊS AUTOMÁTICO</span><b>→</b><span>ANO AUTOMÁTICO</span></div></div>
       {popularView!=='business'&&<><section className="panel mainRankStage"><div className="panelTitle"><div><span className="eyebrow">AO VIVO • {cityLabel}</span><h2>{title}</h2><p>TOP 3 em destaque e classificação completa logo abaixo.</p></div><span className="livePill">● ATUALIZAÇÃO AUTOMÁTICA</span></div>{top3.length?<div className="floatingPodium rankPagePodium">{order.map(p=>{const pos=rank.findIndex(x=>x.id===p.id)+1;return <button className={`floatingWinner place${pos} animatedRankPerson`} key={p.id} onClick={()=>openProfile(p)}><span className="floatingPlace">{pos}</span><span className="floatingCrown">{pos===1?'♛':pos===2?'◆':'▲'}</span><span className="rankPhotoSquare"><Avatar profile={p} name={p.full_name} size={pos===1?'lg':'md'}/></span><div className="winnerIdentity"><b>{p.full_name||p.username}</b><Seal type={sealTypeFor(p)} color={p.seal_color}/></div><small>@{p.username}</small><strong>{metric(p)}</strong><span className="podiumBase">{pos}º</span></button>})}</div>:<div className="rankEmptyState"><span>🏆</span><b>Ainda não há classificados</b><small>O pódio aparece automaticamente quando houver votos, pontos ou seguidores válidos.</small></div>}{myPos>=0&&<div className="myRankSpot"><span>📍 SUA POSIÇÃO</span><b>#{myPos+1}</b><small>de {rank.length} classificados • {metric(rank[myPos])}</small></div>}</section>
-      <div className="panel fullRanking"><div className="panelTitle"><div><h2>Classificação completa</h2><p>Do 1º até o último classificado. Todo participante consegue acompanhar sua posição.</p></div><b>{rank.length} classificados</b></div><div className="listTable">{rank.map((p,i)=><div className={`listRow ${p.id===session.user.id?'myRankRow':''}`} key={p.id}><b className="rankNum">#{i+1}</b><button className="plainBtn" onClick={()=>openProfile(p)}><Avatar profile={p}/></button><div className="grow"><div className="nameWithSeal"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><Seal type={sealTypeFor(p)} color={p.seal_color}/>{p.id===session.user.id&&<span className="youPill">VOCÊ</span>}</div><small>@{p.username}</small></div><strong>{metric(p)}</strong>{rankType==='week'&&p.id!==session.user.id&&<button className={currentVote===p.id?'smallBtn chosen':'smallBtn'} onClick={()=>voteCompetition(p,'week')}>{currentVote===p.id?'Meu voto':'Votar'}</button>}</div>)}{!rank.length&&<p className="muted">Ainda não há classificados neste período.</p>}</div></div></>}
+      <div className="panel fullRanking"><div className="panelTitle"><div><h2>Classificação completa</h2><p>Do 1º até o último classificado. Todo participante consegue acompanhar sua posição.</p></div><b>{rank.length} classificados</b></div><div className="listTable">{rank.map((p,i)=><div className={`listRow ${p.id===session.user.id?'myRankRow':''}`} key={p.id}><b className="rankNum">#{i+1}</b><button className="plainBtn" onClick={()=>openProfile(p)}><Avatar profile={p}/></button><div className="grow"><div className="nameWithSeal"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><Seal type={sealTypeFor(p)} color={p.seal_color}/>{p.id===session.user.id&&<span className="youPill">VOCÊ</span>}</div><small>@{p.username}</small></div><strong>{metric(p)}</strong></div>)}{!rank.length&&<p className="muted">Ainda não há classificados neste período.</p>}</div></div>
+      {rankType==='week'&&<div className="panel weeklyVotePanel"><div className="panelTitle"><div><h2>🗳️ Votação semanal</h2><p>Todos os perfis válidos da cidade aparecem aqui, mesmo antes de receber o primeiro voto. Isso permite iniciar o ranking do zero em qualquer cidade do Brasil.</p></div><b>{weeklyCandidates.length} participantes</b></div><div className="listTable">{weeklyCandidates.map(p=>{const ranked=rank.find(x=>x.id===p.id);return <div className={`listRow ${p.id===session.user.id?'myRankRow':''}`} key={`candidate-${p.id}`}><span className="rankNum">{ranked?`#${rank.findIndex(x=>x.id===p.id)+1}`:'—'}</span><button className="plainBtn" onClick={()=>openProfile(p)}><Avatar profile={p}/></button><div className="grow"><div className="nameWithSeal"><button className="linkName" onClick={()=>openProfile(p)}>{p.full_name||p.username}</button><Seal type={sealTypeFor(p)} color={p.seal_color}/>{p.id===session.user.id&&<span className="youPill">VOCÊ</span>}</div><small>@{p.username} • {ranked?`${ranked.votes||0} voto(s)`:'ainda sem votos'}</small></div>{p.id!==session.user.id?<button className={currentVote===p.id?'smallBtn chosen':'smallBtn'} onClick={()=>voteCompetition(p,'week')}>{currentVote===p.id?'✓ Meu voto':'Votar'}</button>:<span className="youPill">SEU PERFIL</span>}</div>})}{!weeklyCandidates.length&&<p className="muted">Nenhum participante disponível nesta cidade.</p>}</div></div>}</>}
       {popularView==='business'&&<div className="panel"><div className="panelTitle"><div><h2>Estabelecimentos em destaque</h2><p>Os estabelecimentos aparecem conforme avaliações e atividade local.</p></div></div><div className="ownerUserList">{topBusinesses.map(b=><button className="ownerUserRow clickable" key={b.id} onClick={()=>loadBusiness(b.id)}><Avatar profile={{avatar_url:b.logo_url}} name={b.name}/><div className="grow"><b>{b.name} <Seal type="business"/></b><small>{b.category||'Estabelecimento local'} • {b.city||''} - {b.state||''}</small></div><strong>★ {Number(b.rating_average||0).toFixed(1)}</strong></button>)}{!topBusinesses.length&&<p className="muted">Nenhum estabelecimento em destaque nesta cidade ainda.</p>}</div></div>}
     </>
   }

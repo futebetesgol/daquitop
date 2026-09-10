@@ -303,3 +303,23 @@ body{background:radial-gradient(circle at 15% 5%,rgba(111,82,255,.12),transparen
 .sealLegend>span{display:inline-flex;align-items:center;gap:8px;color:#cbd6e7;font-size:11px;font-weight:800}
 .nameWithSeal .sealMedal,.commentName .sealMedal,.profileNameLine .sealMedal,.winnerIdentity .sealMedal{margin-left:2px}
 @media(max-width:700px){.roleSeal.sealMedal{width:20px;height:20px}.sealMedalCore{font-size:11px}.sealLegend{gap:8px}.sealLegend>span{font-size:10px}}
+
+/* V6.14.4 — banner do ranking permanece visível mesmo sem classificados */
+.rankPagePodium.podiumWithNationalBg{min-height:360px;position:relative;overflow:hidden;isolation:isolate}
+.rankPagePodium.podiumWithNationalBg::before{content:"";position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(4,11,24,.22),rgba(4,11,24,.58)),var(--podium-bg);background-size:cover;background-position:center;z-index:-2}
+.rankPagePodium.podiumWithNationalBg::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 35%,rgba(255,200,55,.10),transparent 42%);z-index:-1;pointer-events:none}
+.rankPagePodium .podiumEmptyOnBanner{min-height:300px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:rgba(2,8,18,.30);backdrop-filter:blur(1.5px);border-radius:18px}
+.rankPagePodium .podiumEmptyOnBanner b{font-size:18px;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+.rankPagePodium .podiumEmptyOnBanner small{max-width:620px;color:#d3dceb;text-shadow:0 2px 8px rgba(0,0,0,.8)}
+@media(max-width:820px){.rankPagePodium.podiumWithNationalBg{min-height:280px}.rankPagePodium .podiumEmptyOnBanner{min-height:230px;padding:18px}}
+
+/* CIDARANK V6.14.5 — Explorar nacional + pesquisa do Dono */
+.explorePodiumWithBanner{min-height:330px;background-position:center!important;background-size:cover!important;border:1px solid rgba(224,178,60,.2)!important}
+.explorePodiumWithBanner>.floatingPodiumTitle,.explorePodiumWithBanner>.floatingPodium,.explorePodiumWithBanner>.rankEmptyState{position:relative;z-index:2}
+.explorePodiumWithBanner>.rankEmptyState{min-height:245px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+.ownerNationalSearchBar{grid-template-columns:minmax(190px,1fr) minmax(190px,.9fr) minmax(190px,.9fr) auto auto auto!important;align-items:center}
+.ownerSearchScopeBtn{white-space:nowrap}
+.ownerUserSearchLine{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:10px!important;align-items:center}
+.ownerUserSearchLine .primaryBtn{height:44px;white-space:nowrap}
+@media(max-width:1100px){.ownerNationalSearchBar{grid-template-columns:1fr 1fr!important}.ownerNationalSearchBar>div{grid-column:1/-1}.ownerNationalSearchBar button{width:100%}}
+@media(max-width:720px){.ownerNationalSearchBar{grid-template-columns:1fr!important}.ownerNationalSearchBar>*{grid-column:1!important}.ownerUserSearchLine{grid-template-columns:1fr!important}.ownerUserSearchLine .primaryBtn{width:100%}.explorePodiumWithBanner{min-height:300px}}

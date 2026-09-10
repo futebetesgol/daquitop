@@ -147,3 +147,113 @@ body{background:radial-gradient(circle at 15% 5%,rgba(111,82,255,.12),transparen
 .rankStatusBar{display:flex;align-items:center;gap:12px;margin:12px 0 4px;padding:12px 14px;border-radius:15px;border:1px solid rgba(85,207,255,.18);background:linear-gradient(100deg,rgba(25,132,202,.10),rgba(101,70,240,.12))}.rankStatusBar>span{font-size:24px}.rankStatusBar b,.rankStatusBar small{display:block}.rankStatusBar small{margin-top:3px;color:#91a7c6}.rankStatusBar strong{color:#72e4ff}
 .profileHero{overflow:visible!important;background:#081526!important}.profileCover{height:clamp(260px,31vw,420px)!important;background-size:contain!important;background-repeat:no-repeat!important;background-position:center!important;background-color:#050c17!important;border-radius:26px 26px 0 0}.profileMain.profileMainNoOverlap{margin-top:0!important;padding:18px 24px 20px!important;align-items:center!important;background:linear-gradient(180deg,#0b192c,#091523)!important;border-radius:0 0 26px 26px}.profileAvatarFrame{width:154px;height:154px;display:grid;place-items:center;flex:0 0 154px;border-radius:26px;padding:6px;background:linear-gradient(135deg,#1bc8ff,#7557ff,#ef4eda);box-shadow:0 14px 32px rgba(0,0,0,.28)}.profileAvatarFrame .avatar.xxl{width:142px!important;height:142px!important;border-radius:21px!important;background:#0b1729!important;border:0!important}.profileAvatarFrame .avatar.xxl img{width:100%!important;height:100%!important;object-fit:contain!important;object-position:center!important;background:#0b1729!important}.profileFutureRanks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.profileFutureRanks span{display:flex;justify-content:space-between;gap:8px;padding:11px 13px;border-radius:14px;border:1px dashed rgba(150,162,214,.18);background:rgba(10,21,38,.55);color:#92a2bc}.profileFutureRanks b{font-size:9px;color:#b8a7ff;letter-spacing:.08em}
 @media(max-width:640px){.profileMain.profileMainNoOverlap{margin-top:0!important;padding:16px!important}.profileAvatarFrame{width:136px;height:136px;flex-basis:136px}.profileAvatarFrame .avatar.xxl{width:124px!important;height:124px!important}.profileFutureRanks{grid-template-columns:1fr}.rankStatusBar{align-items:flex-start}}
+
+/* =========================================================
+   CIDARANK V6.14 — MURAL + PÓDIO PREMIUM + COMÉRCIO LOCAL
+   Visual mais sofisticado, leve e responsivo.
+   ========================================================= */
+:root{--gold:#f5c542;--gold2:#ffdf73;--silver:#dce5ef;--bronze:#d98b55;--graphite:#09111d}
+
+/* Mural: mais elegante sem efeitos pesados */
+.socialPost{border-color:rgba(245,197,66,.13);background:linear-gradient(180deg,#0c1828,#081321);box-shadow:0 10px 26px rgba(0,0,0,.16);overflow:hidden}
+.socialPost:hover{border-color:rgba(245,197,66,.22)}
+.socialPost .postHead{padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.045)}
+.socialPost .postImage{border-radius:12px;max-height:590px;background:#050b12;object-fit:contain;border:1px solid rgba(255,255,255,.055)}
+.socialPost .stats{margin-top:12px;padding:11px 2px 0}
+.socialPost .stats button,.socialPost .stats span{font-size:13px}
+
+/* Comentários e emojis */
+.socialCommentInput{align-items:flex-end!important;padding:10px 0 0!important}
+.commentInputMain{flex:1;min-width:0}
+.commentInputMain>input{width:100%;height:42px;border-radius:13px!important;background:#091729!important;border:1px solid rgba(142,166,219,.18)!important;color:white!important;outline:none}
+.commentInputMain>input:focus{border-color:rgba(245,197,66,.42)!important}
+.emojiQuick{display:flex;gap:3px;flex-wrap:wrap;margin-top:6px}
+.emojiQuick button{width:29px;height:27px;border:0!important;border-radius:8px!important;padding:0!important;background:rgba(255,255,255,.045)!important;color:white!important;display:grid;place-items:center;font-size:14px;transition:.15s ease}
+.emojiQuick button:hover{background:rgba(245,197,66,.12)!important;transform:translateY(-1px)}
+.sendCommentBtn{height:42px!important;border:1px solid rgba(245,197,66,.28)!important;background:linear-gradient(135deg,#947019,#d7a81d)!important;color:#fff7d3!important;font-weight:900!important;padding:0 15px!important}
+.commentComposeRow{display:flex!important;align-items:flex-end!important;gap:8px!important;flex-wrap:wrap}
+.commentComposeRow>input{flex:1;min-width:180px}
+.commentComposeRow>.emojiQuick{width:100%;order:3;margin:0}
+.commentBubble{background:#0c1a2d!important;border-color:rgba(255,255,255,.07)!important}
+.commentLike.active{color:#ff6f9c!important}
+
+/* Pódio premium inspirado em painel de premiação, mantendo dados reais */
+.premiumRankingSection{margin-top:14px}
+.compactRankHead{padding:3px 2px 10px}
+.compactRankHead b{font-size:16px;color:#f6f8fc}
+.premiumPodiumCard{position:relative;overflow:hidden;min-height:360px;border-color:rgba(245,197,66,.30)!important;background:#070b11!important;isolation:isolate}
+.premiumPodiumCard:before{content:'';position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(4,7,12,.34),rgba(4,7,12,.68)),var(--podium-bg);background-size:cover;background-position:center;opacity:.62;z-index:-2}
+.premiumPodiumCard:after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,rgba(255,191,36,.20),transparent 34%),linear-gradient(90deg,rgba(8,13,22,.78),transparent 24%,transparent 76%,rgba(8,13,22,.78));z-index:-1}
+.premiumPodiumCard .floatingPodiumTitle{padding:3px 5px 8px}
+.premiumPodiumCard .floatingPodiumTitle h3{font-size:18px;color:#ffe47c;letter-spacing:.04em}
+.premiumPodiumCard .floatingPodiumTitle small{color:#d4d9e1}
+.premiumPodium{min-height:290px;padding:44px 8px 0;align-items:flex-end}
+.premiumPodium .floatingWinner{width:29%;max-width:220px;padding:12px 8px 0;border-radius:18px;background:linear-gradient(180deg,rgba(4,8,14,.2),rgba(4,8,14,.58));backdrop-filter:none;filter:none;animation:rankFloat 4.6s ease-in-out infinite}
+.premiumPodium .floatingWinner.place1{transform:translateY(-34px);animation-delay:.25s}
+.premiumPodium .floatingWinner.place2{animation-delay:.8s}
+.premiumPodium .floatingWinner.place3{animation-delay:1.35s}
+.premiumPodium .rankPhotoSquare{display:grid;place-items:center;width:94px;height:112px;padding:4px;border-radius:18px;background:linear-gradient(160deg,#f6c742,#ffe889 45%,#a86b0c);box-shadow:0 0 0 2px rgba(255,224,112,.14),0 12px 28px rgba(0,0,0,.38)}
+.premiumPodium .place2 .rankPhotoSquare{background:linear-gradient(160deg,#dde6ee,#8797a8,#f6f8fb)}
+.premiumPodium .place3 .rankPhotoSquare{background:linear-gradient(160deg,#e3a36d,#9c5834,#f0b07a)}
+.premiumPodium .place1 .rankPhotoSquare{width:112px;height:136px}
+.premiumPodium .rankPhotoSquare .avatar{width:100%!important;height:100%!important;border-radius:14px!important;border:0!important;background:#111826!important}
+.premiumPodium .rankPhotoSquare .avatar img{object-fit:cover!important}
+.premiumPodium .floatingCrown{font-size:28px!important;height:27px!important;line-height:27px!important;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+.premiumPodium .place1 .floatingCrown{font-size:35px!important}
+.premiumPodium .floatingPlace{top:30px;right:calc(50% - 58px);width:34px;height:34px;font-size:12px;border:2px solid rgba(255,255,255,.35);box-shadow:0 5px 15px rgba(0,0,0,.35)}
+.premiumPodium .winnerIdentity{display:flex;align-items:center;justify-content:center;gap:5px;max-width:100%}
+.premiumPodium .winnerIdentity>b{font-size:13px}
+.premiumPodium .podiumBase{width:100%;min-height:62px;margin-top:8px;padding:8px 5px!important;border-radius:12px 12px 3px 3px!important;display:grid;place-items:center;gap:0;background:linear-gradient(180deg,#141b25,#0a0f16)!important;border:1px solid rgba(255,255,255,.10)!important;box-shadow:inset 0 1px rgba(255,255,255,.08),0 10px 20px rgba(0,0,0,.28)}
+.premiumPodium .place1 .podiumBase{min-height:84px;background:linear-gradient(180deg,#6b4e09,#201806)!important;border-color:rgba(255,216,82,.35)!important}
+.premiumPodium .place2 .podiumBase{background:linear-gradient(180deg,#4b5866,#171d24)!important}
+.premiumPodium .place3 .podiumBase{background:linear-gradient(180deg,#6c3d28,#20120d)!important}
+.premiumPodium .podiumBase em{font-style:normal;font-size:30px;font-weight:950;line-height:1;color:#fff}
+.premiumPodium .podiumBase small{font-size:8px;letter-spacing:.12em;color:#cbd5e1}
+.podiumEmpty{position:absolute;left:0;right:0;bottom:90px;text-align:center;color:#d4deeb!important}
+@keyframes rankFloat{0%,100%{translate:0 0}50%{translate:0 -5px}}
+@media(prefers-reduced-motion:reduce){.premiumPodium .floatingWinner{animation:none}}
+
+/* Painel do dono: prévia do fundo do pódio */
+.podiumBannerAdmin{border-color:rgba(245,197,66,.18)!important}
+.podiumPreview{aspect-ratio:8/3;background:#050a10;overflow:hidden}
+.podiumPreview img{width:100%;height:100%;object-fit:cover}
+
+/* Coluna direita: somente comércio local */
+.commerceOnlyCol{gap:14px}
+.rightCommerceSubtitle{margin:2px 0 10px;color:#92a3ba;font-size:12px}
+.commerceSpotlight{border-color:rgba(245,197,66,.16)!important}
+.commerceRankRow{padding:10px 3px!important}
+.localAdCarousel{overflow:hidden}
+.adCarouselTrack{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 0 8px;scrollbar-width:thin}
+.localAdCard{scroll-snap-align:start;flex:0 0 92%;min-height:154px;border:1px solid rgba(245,197,66,.17);border-radius:15px;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;text-align:left;color:white;background-color:#0d1927;background-size:cover;background-position:center;overflow:hidden}
+.localAdCard span{font-size:8px;letter-spacing:.12em;color:#ffe06b;font-weight:950;background:rgba(0,0,0,.48);padding:4px 6px;border-radius:7px}
+.localAdCard b{margin-top:6px;font-size:16px;text-shadow:0 2px 8px #000}
+.localAdCard small{color:#e3e7ed;text-shadow:0 2px 8px #000}
+.rightContact{border-top:1px solid rgba(255,255,255,.07);padding:14px 4px 0;display:grid;gap:7px}
+.rightContact>b{font-size:10px;letter-spacing:.12em;color:#f3c94c}
+.rightContact a{font-size:13px;color:#dce5f2}
+.rightContact a:hover{color:#ffe078}
+
+/* Contato oficial mais visível */
+.miniContact{font-size:11px!important;font-weight:800!important;color:#e8edf7!important;margin-top:7px!important}
+.miniContact.instagramContact{color:#f3c94c!important}
+.contactSocials{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.contactSocials a{font-size:12px!important;padding:0!important;background:none!important;color:#f3d56f!important}
+
+/* Paleta preta/dourada gradualmente aplicada aos destaques desta versão */
+.autoRankBadge{border-color:rgba(245,197,66,.28)!important;color:#ffe071!important;background:rgba(245,197,66,.07)!important}
+
+@media(max-width:760px){
+  .premiumPodiumCard{min-height:330px}
+  .premiumPodium{min-height:260px;padding-top:36px}
+  .premiumPodium .rankPhotoSquare{width:70px;height:88px}
+  .premiumPodium .place1 .rankPhotoSquare{width:84px;height:104px}
+  .premiumPodium .floatingPlace{right:calc(50% - 42px);top:28px;width:28px;height:28px}
+  .premiumPodium .podiumBase{min-height:54px}
+  .premiumPodium .place1 .podiumBase{min-height:68px}
+  .premiumPodium .podiumBase em{font-size:24px}
+  .emojiQuick{gap:2px}
+  .emojiQuick button{width:27px;height:25px;font-size:13px}
+  .socialCommentInput{display:grid!important;grid-template-columns:auto minmax(0,1fr)}
+  .socialCommentInput>.sendCommentBtn{grid-column:2;justify-self:end;height:36px!important}
+}

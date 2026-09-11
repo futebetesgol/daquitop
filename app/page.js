@@ -87,6 +87,7 @@ export default function Home(){
   const [cities,setCities]=useState([]);
   const [locationsBusy,setLocationsBusy]=useState(false);
   const [locationsError,setLocationsError]=useState('');
+  const [publicExpansionRows,setPublicExpansionRows]=useState([]);
 
   const [posts,setPosts]=useState([]);
   const [postAuthors,setPostAuthors]=useState({});
@@ -202,6 +203,7 @@ export default function Home(){
   const [expansionState,setExpansionState]=useState('');
   const [expansionCities,setExpansionCities]=useState([]);
   const [expansionBusy,setExpansionBusy]=useState(false);
+  const [expansionCitySearch,setExpansionCitySearch]=useState('');
   const [postingPaused,setPostingPaused]=useState(false);
   const [waitlistCount,setWaitlistCount]=useState(0);
 
@@ -216,6 +218,16 @@ export default function Home(){
     if(!profile || !['state','brazil'].includes(popularView)) return;
     loadScopePopular(popularView);
   },[popularView,profile?.state]);
+
+  const activeSignupStates=useMemo(()=>{
+    const openUFs=new Set((publicExpansionRows||[]).filter(r=>r.is_open!==false).map(r=>String(r.state||'').trim().toUpperCase()));
+    return states.filter(st=>openUFs.has(String(st.sigla||'').toUpperCase()));
+  },[states,publicExpansionRows]);
+  const filteredExpansionCities=useMemo(()=>{
+    const q=locationKey(expansionCitySearch);
+    if(!q)return expansionCities;
+    return expansionCities.filter(c=>locationKey(c.nome).includes(q));
+  },[expansionCities,expansionCitySearch]);
 
   const displayName=profile?.full_name || session?.user?.email?.split('@')[0] || 'Usuário';
   const cityLabel=profile?.city && profile?.state ? `${profile.city} - ${profile.state}` : 'Sua cidade';
@@ -232,6 +244,21 @@ export default function Home(){
       .catch(()=>{if(alive)setLocationsError('Não foi possível carregar estados e cidades do IBGE.')});
     return()=>{alive=false};
   },[]);
+
+  async function loadPublicExpansionData(){
+    const {data,error}=await supabase.from('cidarank_city_expansion').select('state,state_key,city,city_key,is_open').eq('is_open',true).order('state').order('city');
+    if(!error)setPublicExpansionRows(data||[]);
+  }
+
+  useEffect(()=>{
+    loadPublicExpansionData();
+  },[]);
+
+  useEffect(()=>{
+    if(session)return;
+    const timer=setInterval(loadPublicExpansionData,60000);
+    return()=>clearInterval(timer);
+  },[session]);
 
   useEffect(()=>{
     let mounted=true;
@@ -299,15 +326,16 @@ export default function Home(){
   async function handleStateChange(e){
     const id=e.target.value;
     const item=states.find(x=>String(x.id)===String(id));
-    setForm(v=>({...v,state_id:id,state:item?.sigla||'',city:''}));
+    const uf=item?.sigla||'';
+    setForm(v=>({...v,state_id:id,state:uf,city:''}));
     setCities([]); setLocationsError('');
     if(!id)return;
     setLocationsBusy(true);
-    try{
-      const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${id}/municipios?orderBy=nome`);
-      if(!r.ok)throw new Error();
-      setCities(await r.json());
-    }catch{setLocationsError('Não foi possível carregar as cidades desse estado.');}
+    const {data:openRows,error}=await supabase.from('cidarank_city_expansion').select('state,city,is_open').eq('is_open',true);
+    if(error){setLocationsError('Não foi possível carregar as cidades liberadas.');setLocationsBusy(false);return;}
+    setPublicExpansionRows(openRows||[]);
+    const rows=(openRows||[]).filter(r=>stateKey(r.state)===stateKey(uf));
+    setCities(rows.map((r,i)=>({id:`open-${uf}-${i}`,nome:r.city})).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')));
     setLocationsBusy(false);
   }
 
@@ -607,7 +635,7 @@ export default function Home(){
   }
 
   async function handleExpansionStateChange(e){
-    const id=e.target.value; setExpansionStateId(id); setExpansionCities([]);
+    const id=e.target.value; setExpansionStateId(id); setExpansionCities([]); setExpansionCitySearch('');
     const st=states.find(x=>String(x.id)===String(id)); setExpansionState(st?.sigla||'');
     if(!id)return; setExpansionBusy(true);
     try{const r=await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${id}/municipios?orderBy=nome`);setExpansionCities(await r.json())}catch{setExpansionCities([])}
@@ -619,7 +647,7 @@ export default function Home(){
     const payload={state:expansionState,state_key:stateKey(expansionState),city,city_key:cityKey(city),is_open:open,updated_by:session.user.id,updated_at:new Date().toISOString()};
     const {error}=await supabase.from('cidarank_city_expansion').upsert(payload,{onConflict:'state_key,city_key'});
     if(error){alert(error.message);return;}
-    await logAdminAction(open?'city_opened':'city_closed','city',null,payload); await loadExpansionData();
+    await logAdminAction(open?'city_opened':'city_closed','city',null,payload); await Promise.all([loadExpansionData(),loadPublicExpansionData()]);
   }
 
   async function ownerSetStateOpen(open){
@@ -628,7 +656,7 @@ export default function Home(){
     setExpansionBusy(true);
     const rows=expansionCities.map(c=>({state:expansionState,state_key:stateKey(expansionState),city:c.nome,city_key:cityKey(c.nome),is_open:open,updated_by:session.user.id,updated_at:new Date().toISOString()}));
     const {error}=await supabase.from('cidarank_city_expansion').upsert(rows,{onConflict:'state_key,city_key'});
-    setExpansionBusy(false); if(error){alert(error.message);return;} await loadExpansionData();
+    setExpansionBusy(false); if(error){alert(error.message);return;} await Promise.all([loadExpansionData(),loadPublicExpansionData()]);
   }
 
   async function ownerTogglePostingPause(){
@@ -1315,7 +1343,7 @@ export default function Home(){
           {authMode==='signup'&&<>
             <label>Nome completo<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="Seu nome"/></label>
             <label>@Usuário<input required value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="seuusuario"/></label>
-            <div className="authGrid locationGrid"><label>Estado<select required value={form.state_id} onChange={handleStateChange}><option value="">Selecione</option>{states.map(x=><option key={x.id} value={x.id}>{x.nome} ({x.sigla})</option>)}</select></label><label>Cidade<select required disabled={!form.state_id||locationsBusy} value={form.city} onChange={e=>setForm({...form,city:e.target.value})}><option value="">{locationsBusy?'Carregando...':'Selecione'}</option>{cities.map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></label></div>
+            <div className="authGrid locationGrid"><label>Estado<select required value={form.state_id} onFocus={loadPublicExpansionData} onChange={handleStateChange}><option value="">Selecione</option>{activeSignupStates.map(x=><option key={x.id} value={x.id}>{x.nome} ({x.sigla})</option>)}</select></label><label>Cidade<select required disabled={!form.state_id||locationsBusy} value={form.city} onChange={e=>setForm({...form,city:e.target.value})}><option value="">{locationsBusy?'Carregando...':'Selecione'}</option>{cities.map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></label></div><div className="signupExpansionNote">🌎 Cadastro liberado somente nas cidades ativas pelo CIDARANK. Novas cidades aparecem aqui automaticamente quando forem abertas.</div>
             <label>Gênero<select required value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}><option value="">Selecione</option><option value="homem">Homem</option><option value="mulher">Mulher</option><option value="outros">Outros</option></select></label>
             {locationsError&&<div className="authMessage authError">{locationsError}</div>}
           </>}
@@ -1563,7 +1591,7 @@ export default function Home(){
 
       {ownerTab==='equipe'&&<div className="panel"><h2>Equipe administrativa</h2><p className="muted">Somente o dono principal pode conceder ou remover acesso. Para adicionar alguém, a pessoa precisa já ter uma conta CIDARANK.</p>{isOwner&&<div className="adminInviteBox"><input type="email" placeholder="Gmail/e-mail da pessoa que vai administrar" value={ownerInviteEmail} onChange={e=>setOwnerInviteEmail(e.target.value)}/><button className="primaryBtn" disabled={ownerBusy||!ownerInviteEmail.trim()} onClick={ownerGrantAdminByEmail}>{ownerBusy?'Adicionando...':'Adicionar administrador'}</button></div>}<div className="ownerUserList">{ownerUsers.filter(x=>['owner','admin','moderator'].includes(String(x.role||'').toLowerCase())||x.id===session.user.id).map(u=><div className="ownerUserRow" key={u.id}><Avatar profile={u}/><div className="grow"><b>{u.full_name||u.username}</b><small>@{u.username||''}</small><Seal type={u.id===session.user.id&&isOwner?'owner':String(u.role||'').toLowerCase()==='owner'?'owner':'admin'}/></div>{isOwner&&u.id!==session.user.id&&String(u.role||'').toLowerCase()!=='owner'&&<button className="dangerBtn" onClick={()=>ownerToggleUser(u,'role')}>Remover admin</button>}</div>)}</div></div>}
 
-      {ownerTab==='expansao'&&isOwner&&<div className="panel expansionPanel"><div className="ownerTicketHead"><div><span className="eyebrow">CONTROLE EXCLUSIVO DO DONO</span><h2>🌎 Expansão do CIDARANK</h2><p className="muted">Abra cidades aos poucos. Cidades não liberadas ficam EM BREVE. ADMs não podem alterar esta área.</p></div><div className="expansionStats"><b>{expansionRows.filter(x=>x.is_open).length}</b><small>cidades ativas</small><b>{waitlistCount}</b><small>aguardando liberação</small></div></div><div className="expansionControls"><select value={expansionStateId} onChange={handleExpansionStateChange}><option value="">Escolha um estado</option>{states.map(st=><option key={st.id} value={st.id}>{st.nome} ({st.sigla})</option>)}</select><button className="safeBtn" disabled={!expansionStateId||expansionBusy} onClick={()=>ownerSetStateOpen(true)}>🟢 Liberar estado inteiro</button><button className="dangerBtn" disabled={!expansionStateId||expansionBusy} onClick={()=>ownerSetStateOpen(false)}>🔒 Pausar estado inteiro</button></div>{expansionStateId&&<div className="expansionCityGrid">{expansionCities.map(c=>{const row=expansionRows.find(x=>stateKey(x.state)===stateKey(expansionState)&&cityKey(x.city)===cityKey(c.nome));const open=Boolean(row?.is_open);return <div className={`expansionCity ${open?'open':'closed'}`} key={c.id}><div><b>{c.nome}</b><small>{expansionState} • {open?'ATIVA':'EM BREVE'}</small></div><button className={open?'dangerBtn':'safeBtn'} onClick={()=>ownerSetCityOpen(c.nome,!open)}>{open?'Pausar':'Ativar'}</button></div>})}</div>}<div className="emergencyBox"><div><b>🛡️ Chave de emergência das publicações</b><small>Use somente em emergência. O conteúdo existente continua visível.</small></div><button className={postingPaused?'safeBtn':'dangerBtn'} onClick={ownerTogglePostingPause}>{postingPaused?'▶ Reativar novas publicações':'⏸ Pausar novas publicações'}</button></div></div>}
+      {ownerTab==='expansao'&&isOwner&&<div className="panel expansionPanel"><div className="ownerTicketHead"><div><span className="eyebrow">CONTROLE EXCLUSIVO DO DONO</span><h2>🌎 Expansão do CIDARANK</h2><p className="muted">Abra cidades aos poucos. O cadastro só mostra estados e cidades ATIVOS. ADMs não podem alterar esta área.</p></div><div className="expansionStats"><b>{expansionRows.filter(x=>x.is_open).length}</b><small>cidades ativas</small><b>{waitlistCount}</b><small>aguardando liberação</small></div></div><div className="expansionControls"><select value={expansionStateId} onChange={handleExpansionStateChange}><option value="">Escolha um estado</option>{states.map(st=><option key={st.id} value={st.id}>{st.nome} ({st.sigla})</option>)}</select><div className="expansionSearch">🔎<input value={expansionCitySearch} onChange={e=>setExpansionCitySearch(e.target.value)} placeholder="Pesquisar cidade..." disabled={!expansionStateId}/></div><button className="safeBtn" disabled={!expansionStateId||expansionBusy} onClick={()=>ownerSetStateOpen(true)}>🟢 Liberar estado inteiro</button><button className="dangerBtn" disabled={!expansionStateId||expansionBusy} onClick={()=>ownerSetStateOpen(false)}>🔒 Pausar estado inteiro</button></div>{expansionStateId&&<><div className="expansionSyncInfo">🔄 Sincronizado com o cadastro: somente cidades marcadas como <b>ATIVA</b> aparecem para novos usuários.</div><div className="expansionCityGrid">{filteredExpansionCities.map(c=>{const row=expansionRows.find(x=>stateKey(x.state)===stateKey(expansionState)&&cityKey(x.city)===cityKey(c.nome));const open=Boolean(row?.is_open);return <div className={`expansionCity ${open?'open':'closed'}`} key={c.id}><div><b>{c.nome}</b><small>{expansionState} • {open?'ATIVA':'EM BREVE'}</small></div><button className={open?'dangerBtn':'safeBtn'} onClick={()=>ownerSetCityOpen(c.nome,!open)}>{open?'Pausar':'Ativar'}</button></div>})}{!filteredExpansionCities.length&&<div className="expansionNoResults">Nenhuma cidade encontrada.</div>}</div></>}<div className="emergencyBox"><div><b>🛡️ Chave de emergência das publicações</b><small>Use somente em emergência. O conteúdo existente continua visível.</small></div><button className={postingPaused?'safeBtn':'dangerBtn'} onClick={ownerTogglePostingPause}>{postingPaused?'▶ Reativar novas publicações':'⏸ Pausar novas publicações'}</button></div></div>}
 
       {ownerTab==='comunicados'&&<div className="panel"><div className="announcementStudioHead"><div><span className="eyebrow">CENTRAL NACIONAL</span><h2>📣 Avisos & Atualizações</h2><p className="muted">Publique novidades, manutenção e alertas com alcance por Brasil, estado ou cidade.</p></div><span className="studioBadge">CIDARANK LIVE</span></div><div className="announcementStudio"><div className="formGrid"><label>Tipo<select value={ownerAnnouncement.kind} onChange={e=>setOwnerAnnouncement(v=>({...v,kind:e.target.value}))}><option value="novidade">Novidade</option><option value="manutencao">Manutenção</option><option value="atualizacao">Atualização</option><option value="importante">Aviso importante</option></select></label><label>Alcance<select value={ownerAnnouncement.scope} onChange={e=>setOwnerAnnouncement(v=>({...v,scope:e.target.value}))}><option value="brasil">Brasil inteiro</option><option value="estado">Estado</option><option value="cidade">Cidade</option></select></label><label>UF<input disabled={ownerAnnouncement.scope==='brasil'} value={ownerAnnouncement.state} onChange={e=>setOwnerAnnouncement(v=>({...v,state:e.target.value.toUpperCase()}))} placeholder="CE"/></label><label>Cidade<input disabled={ownerAnnouncement.scope!=='cidade'} value={ownerAnnouncement.city} onChange={e=>setOwnerAnnouncement(v=>({...v,city:e.target.value}))}/></label></div><label>Título<input value={ownerAnnouncement.title} onChange={e=>setOwnerAnnouncement(v=>({...v,title:e.target.value}))}/></label><label>Mensagem<textarea rows={4} value={ownerAnnouncement.message} onChange={e=>setOwnerAnnouncement(v=>({...v,message:e.target.value}))}/></label><label className="checkLine"><input type="checkbox" checked={ownerAnnouncement.show_popup} onChange={e=>setOwnerAnnouncement(v=>({...v,show_popup:e.target.checked}))}/> Mostrar na frente quando a pessoa abrir o site</label><button className="primaryBtn announcementSend" onClick={ownerPublishAnnouncement}>🚀 Publicar aviso</button></div><h3 className="activeAnnouncementTitle">Avisos ativos</h3>{announcements.map(a=><div className="announcementCard" key={a.id}><b>{a.title}</b><p>{a.message}</p><small>{a.scope==='brasil'?'Brasil inteiro':`${a.city||''} ${a.state||''}`} • {fmtDate(a.created_at)}</small></div>)}</div>}
 

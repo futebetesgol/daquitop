@@ -420,3 +420,89 @@ body{background:radial-gradient(circle at 15% 5%,rgba(111,82,255,.12),transparen
   .profileCover>img{height:100%!important;max-height:none!important}
   .autoExploreStatus{width:100%;justify-content:center;white-space:normal;text-align:center}
 }
+
+/* CIDARANK V6.15.2 — cadastro sincronizado + busca de cidade + visual grafite/dourado */
+:root{
+  --bg:#070b10;
+  --card:#10151d;
+  --card2:#151b24;
+  --line:rgba(222,183,77,.18);
+  --muted:#9aa4b2;
+  --cyan:#f1c453;
+  --purple:#c79a2b;
+  --pink:#f0d478;
+  --danger:#ef667c;
+  --good:#44d79a;
+  --cr-gold:#f3c957;
+  --cr-gold2:#b9821f;
+}
+body{background:radial-gradient(circle at 45% -15%,rgba(196,151,43,.10),transparent 28%),#070b10!important}
+.shell{background:radial-gradient(circle at 42% -10%,rgba(212,167,55,.08),transparent 30%),#070b10!important}
+.sidebar{background:linear-gradient(180deg,#0b1119,#070b10)!important;border-right-color:rgba(239,199,85,.13)!important}
+.topbar{background:rgba(7,11,16,.95)!important;border-bottom-color:rgba(239,199,85,.10)!important}
+.sidebar nav button.active,.ownerTabs button.active,.segmented button.active{
+  background:linear-gradient(100deg,#15191f,#33270c 62%,#bb841b)!important;
+  color:#fff!important;
+  box-shadow:0 8px 24px rgba(175,126,24,.18)!important;
+  border:1px solid rgba(247,207,91,.27)!important;
+}
+.primaryBtn,.actions .publish,.authSubmit{
+  background:linear-gradient(100deg,#a87316,#e9bd4b,#fff0ad)!important;
+  color:#17120a!important;
+  font-weight:900!important;
+}
+.composer,.post,.panel,.rankCard,.businessCard,.conversationList,.chatPanel{
+  background:linear-gradient(180deg,rgba(17,23,31,.99),rgba(9,13,19,.99))!important;
+  border-color:rgba(225,188,82,.14)!important;
+}
+
+.signupExpansionNote{
+  margin:8px 0 12px;
+  border:1px solid rgba(243,201,87,.26);
+  background:rgba(243,201,87,.06);
+  color:#d9c27b;
+  border-radius:10px;
+  padding:9px 11px;
+  font-size:12px;
+  line-height:1.4;
+}
+.expansionSearch{
+  min-width:260px;
+  flex:1;
+  max-width:420px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:0 12px;
+  min-height:44px;
+  border:1px solid rgba(243,201,87,.22);
+  background:#0a1421;
+  border-radius:12px;
+  color:#f3c957;
+}
+.expansionSearch input{
+  min-width:0;
+  width:100%;
+  border:0!important;
+  outline:0!important;
+  background:transparent!important;
+  color:#fff!important;
+  padding:10px 0!important;
+}
+.expansionSearch input::placeholder{color:#8190a4}
+.expansionSearch:focus-within{border-color:rgba(243,201,87,.55);box-shadow:0 0 0 3px rgba(243,201,87,.06)}
+.expansionSyncInfo{
+  margin:-2px 4px 12px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(74,230,164,.20);
+  background:rgba(30,128,91,.08);
+  color:#a8cdbd;
+  font-size:12px;
+}
+.expansionSyncInfo b{color:#67e5a9}
+.expansionNoResults{grid-column:1/-1;text-align:center;padding:34px 12px;color:#8998ad;border:1px dashed rgba(255,255,255,.10);border-radius:14px}
+.authCard select option{background:#0b1119;color:#fff}
+@media(max-width:760px){
+  .expansionSearch{min-width:0;max-width:none;width:100%}
+}

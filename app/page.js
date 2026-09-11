@@ -115,6 +115,7 @@ export default function Home(){
   const [followSearch,setFollowSearch]=useState('');
   const [directorySearch,setDirectorySearch]=useState('');
   const [lastSeenCityFeed,setLastSeenCityFeed]=useState('');
+  const [cityFeedSeenReady,setCityFeedSeenReady]=useState(false);
 
   const [businesses,setBusinesses]=useState([]);
   const [selectedBusiness,setSelectedBusiness]=useState(null);
@@ -1262,17 +1263,55 @@ export default function Home(){
   const topPeople=useMemo(()=>people.filter(p=>!isInstitutionalOwner(p)&&(p.followers_count||0)>0).sort((a,b)=>(b.followers_count||0)-(a.followers_count||0)).slice(0,3),[people]);
   const topBusinesses=useMemo(()=>[...businesses].sort((a,b)=>(Number(b.rating_average||0)-Number(a.rating_average||0)) || ((b.reviews_count||0)-(a.reviews_count||0))).slice(0,3),[businesses]);
 
+  function cityFeedSeenStorageKey(userId= session?.user?.id, city=profile?.city, state=profile?.state){
+    if(!userId||!city||!state)return '';
+    return `cidarank_last_seen_city_feed_${userId}_${stateKey(state)}_${cityKey(city)}`;
+  }
+
+  useEffect(()=>{
+    const key=cityFeedSeenStorageKey();
+    if(!key){setCityFeedSeenReady(false);setLastSeenCityFeed('');return;}
+    let saved='';
+    try{
+      saved=localStorage.getItem(key)||'';
+      // Migra uma única vez o marcador antigo para não recriar alertas de posts antigos.
+      if(!saved){
+        const legacy=localStorage.getItem('cidarank_last_seen_city_feed')||'';
+        if(legacy){saved=legacy;localStorage.setItem(key,legacy)}
+      }
+    }catch{}
+    setLastSeenCityFeed(saved);
+    setCityFeedSeenReady(true);
+  },[session?.user?.id,profile?.city,profile?.state]);
+
+  useEffect(()=>{
+    if(!cityFeedSeenReady||lastSeenCityFeed||!session?.user?.id||!profile?.city||!profile?.state)return;
+    // Primeira visita: o histórico já existente não deve virar notificação nova.
+    const baseline=new Date().toISOString();
+    const key=cityFeedSeenStorageKey();
+    try{if(key)localStorage.setItem(key,baseline)}catch{}
+    setLastSeenCityFeed(baseline);
+  },[cityFeedSeenReady,lastSeenCityFeed,session?.user?.id,profile?.city,profile?.state]);
+
   const unreadMessageCount=useMemo(()=>daquitop_messages.filter(m=>m.recipient_id===session?.user?.id&&!m.read_at).length,[daquitop_messages,session?.user?.id]);
   const unreadPersonalNotificationCount=useMemo(()=>personalNotifications.filter(n=>!n.read_at).length,[personalNotifications]);
   const cityFeedNotificationCount=useMemo(()=>{
-    const seen=lastSeenCityFeed?new Date(lastSeenCityFeed).getTime():0;
+    if(!cityFeedSeenReady||!lastSeenCityFeed)return 0;
+    const seen=new Date(lastSeenCityFeed).getTime();
+    if(!Number.isFinite(seen))return 0;
     return posts.filter(p=>new Date(p.created_at).getTime()>seen&&p.author_id!==session?.user?.id).length;
-  },[posts,lastSeenCityFeed,session?.user?.id]);
+  },[posts,lastSeenCityFeed,cityFeedSeenReady,session?.user?.id]);
 
   function markCityFeedSeen(){
     const now=new Date().toISOString();
-    try{localStorage.setItem('cidarank_last_seen_city_feed',now)}catch{}
+    const key=cityFeedSeenStorageKey();
+    try{
+      if(key)localStorage.setItem(key,now);
+      // Mantém compatibilidade com versões anteriores, mas a leitura principal agora é por usuário/cidade.
+      localStorage.setItem('cidarank_last_seen_city_feed',now);
+    }catch{}
     setLastSeenCityFeed(now);
+    setCityFeedSeenReady(true);
   }
 
   const searchResults=useMemo(()=>{
@@ -1557,7 +1596,7 @@ export default function Home(){
 
   function NotificationsScreen(){
     const unreadMessages=daquitop_messages.filter(m=>m.recipient_id===session.user.id&&!m.read_at);
-    return <><PageHeader title="Notificações" subtitle={`Novidades de ${cityLabel}.`}/><div className="panel notificationList"><button className="primaryBtn markSeenBtn" onClick={()=>{const now=new Date().toISOString();try{localStorage.setItem('cidarank_last_seen_city_feed',now)}catch{}setLastSeenCityFeed(now)}}>Marcar mural como visto</button>{unreadMessages.map(m=>{const p=messagePeople[m.sender_id]||{};return <button className="notificationRow" key={`msg-${m.id}`} onClick={()=>openChat(p)}><span>💬</span><div><b>Nova mensagem de {p.full_name||p.username||'usuário'}</b><small>{fmtDate(m.created_at)}</small></div></button>})}{posts.slice(0,20).map(p=><button className="notificationRow" key={`post-${p.id}`} onClick={()=>{setActive('Início');try{const now=new Date().toISOString();localStorage.setItem('cidarank_last_seen_city_feed',now);setLastSeenCityFeed(now)}catch{}}}><span>📰</span><div><b>Publicação nova no mural</b><small>{fmtDate(p.created_at)}</small></div></button>)}{!unreadMessages.length&&!posts.length&&<p className="muted">Nenhuma novidade no momento.</p>}</div></>
+    return <><PageHeader title="Notificações" subtitle={`Novidades de ${cityLabel}.`}/><div className="panel notificationList"><button className="primaryBtn markSeenBtn" onClick={markCityFeedSeen}>Marcar mural como visto</button>{unreadMessages.map(m=>{const p=messagePeople[m.sender_id]||{};return <button className="notificationRow" key={`msg-${m.id}`} onClick={()=>openChat(p)}><span>💬</span><div><b>Nova mensagem de {p.full_name||p.username||'usuário'}</b><small>{fmtDate(m.created_at)}</small></div></button>})}{posts.slice(0,20).map(p=><button className="notificationRow" key={`post-${p.id}`} onClick={()=>{setActive('Início');markCityFeedSeen()}}><span>📰</span><div><b>Publicação nova no mural</b><small>{fmtDate(p.created_at)}</small></div></button>)}{!unreadMessages.length&&!posts.length&&<p className="muted">Nenhuma novidade no momento.</p>}</div></>
   }
 
   function OwnerFeedScreen(){

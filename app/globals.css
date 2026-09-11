@@ -385,3 +385,38 @@ body{background:radial-gradient(circle at 15% 5%,rgba(111,82,255,.12),transparen
 .expansionPanel{border-top:3px solid var(--cr-gold)}.expansionStats{display:grid;grid-template-columns:auto auto;gap:2px 10px;text-align:right}.expansionStats b{font-size:24px;color:#b98922}.expansionStats small{align-self:center}.expansionControls{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.expansionControls select{min-width:260px}.expansionCityGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;max-height:520px;overflow:auto;padding:4px}.expansionCity{display:flex;align-items:center;justify-content:space-between;border:1px solid #ddd;border-radius:14px;padding:12px;background:#fff}.expansionCity.open{border-color:#79c98d;background:#f2fff5}.expansionCity.closed{opacity:.85}.expansionCity div{display:flex;flex-direction:column}.emergencyBox{margin-top:18px;padding:16px;border:1px solid #f0c36a;background:#fff8e8;border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:15px}.emergencyBox div{display:flex;flex-direction:column}.supportHeadActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .roleSeal.owner,.ownerTextTag{color:#8a5b00}.ownerTabs button.active{box-shadow:inset 0 -3px 0 var(--cr-gold)}
 @media(max-width:760px){.profileCover{height:190px}.expansionControls,.emergencyBox{align-items:stretch;flex-direction:column}.expansionControls select{min-width:0;width:100%}}
+
+/* CIDARANK V6.15.1 — correções de contraste, perfil, suporte e explorar automático */
+.expansionCityGrid{gap:10px!important}
+.expansionCity{
+  background:linear-gradient(145deg,#0d1b2f,#0a1627)!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  color:#f7f9ff!important;
+  opacity:1!important;
+  box-shadow:0 8px 20px rgba(0,0,0,.16)!important;
+}
+.expansionCity.open{background:linear-gradient(145deg,rgba(18,73,55,.92),#0b1c2b)!important;border-color:rgba(74,230,164,.38)!important}
+.expansionCity.closed{background:linear-gradient(145deg,#0d1a2d,#091525)!important;border-color:rgba(255,255,255,.08)!important}
+.expansionCity b{color:#fff!important;font-weight:900!important}
+.expansionCity small{color:#a9b8ce!important;font-weight:700!important}
+.expansionCity.open small{color:#71e3ad!important}
+.expansionCity .safeBtn{background:linear-gradient(135deg,#18a96f,#32d692)!important;color:#fff!important;border:0!important}
+.expansionCity .dangerBtn{background:linear-gradient(135deg,#c2415b,#ef6681)!important;color:#fff!important;border:0!important}
+.emergencyBox{background:linear-gradient(145deg,#17170f,#251d0d)!important;border-color:rgba(245,197,66,.36)!important;color:#fff!important}
+.emergencyBox b{color:#ffe17a!important}.emergencyBox small{color:#d8cfaa!important}
+.expansionControls select{background:#0b1729!important;color:#fff!important;border-color:rgba(255,255,255,.12)!important}
+
+/* Capa 1920x700 inteira, sem corte lateral */
+.profileCover{width:100%!important;aspect-ratio:1920/700!important;height:auto!important;min-height:0!important;max-height:none!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;background:#050c17!important;border-radius:22px 22px 0 0!important}
+.profileCover>img{width:100%!important;height:100%!important;max-height:none!important;object-fit:contain!important;object-position:center center!important;background:#050c17!important}
+.profileCoverEmpty{width:100%!important;height:100%!important;min-height:180px!important}
+.coverPreview{aspect-ratio:1920/700!important;min-height:0!important;height:auto!important;background-size:contain!important;background-position:center!important;background-repeat:no-repeat!important;background-color:#050c17!important}
+
+.autoExploreStatus{display:flex;align-items:center;min-height:44px;padding:0 12px;border:1px solid rgba(96,203,255,.16);border-radius:12px;background:#0b1729;color:#9fdcf5;font-size:12px;font-weight:800;white-space:nowrap}
+.ticketStatusActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.compactDanger{padding:7px 9px!important;font-size:11px!important}
+
+@media(max-width:760px){
+  .profileCover{aspect-ratio:1920/700!important;height:auto!important;max-height:none!important}
+  .profileCover>img{height:100%!important;max-height:none!important}
+  .autoExploreStatus{width:100%;justify-content:center;white-space:normal;text-align:center}
+}

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "cidarank-v6-21-login";
+const CACHE_VERSION = "cidarank-v6-22-estado-brasil";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";

@@ -696,3 +696,15 @@ body{background:radial-gradient(circle at 45% -15%,rgba(196,151,43,.10),transpar
 
 /* CIDARANK V6.19 — regras oficiais + ranking nacional ao vivo */
 .rulesHero{border-color:rgba(225,181,63,.28)!important;background:linear-gradient(145deg,rgba(39,31,10,.76),rgba(8,13,20,.96))!important}.rulesHero h2{margin:5px 0 8px;color:#fff}.rulesHero p{color:#c8d0da;max-width:900px}.rulesGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.ruleCard{display:flex;flex-direction:column;gap:8px;min-height:170px;border-color:rgba(223,178,61,.15)!important}.ruleCard h3{margin:0;color:#f3d36b}.ruleCard p{margin:0;color:#bdc7d4;line-height:1.55}.ruleCard>b{margin-top:auto;color:#fff}.ruleCard small{color:#91a0b4}.futureRule{opacity:.78;background:linear-gradient(145deg,rgba(16,20,27,.95),rgba(24,20,12,.88))!important}.futureRule>b{color:#e3bd4c;letter-spacing:.08em}@media(max-width:820px){.rulesGrid{grid-template-columns:1fr}.ruleCard{min-height:0}.rulesHero{padding:16px!important}}
+
+/* CIDARANK V6.19.1 — tabela nacional + posição do usuário */
+.fullRanking .myRankSpot{margin:16px 0 0!important;position:sticky;bottom:12px;z-index:3;box-shadow:0 14px 34px rgba(0,0,0,.30);backdrop-filter:blur(10px)}
+.myRankSpotFuture{border-style:dashed!important;opacity:.9}
+.futureRankingTable{display:grid;gap:8px;margin-top:10px}
+.futureTab{border-style:dashed!important}
+.rankStatusBar strong{color:#f4d36c}
+@media(max-width:700px){
+  .fullRanking .myRankSpot{position:static!important;margin-top:12px!important}
+  .fullRanking .listRow{grid-template-columns:auto auto minmax(0,1fr) auto!important;gap:8px!important}
+  .fullRanking .listRow>strong{font-size:11px!important;white-space:nowrap}
+}

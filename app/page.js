@@ -83,6 +83,8 @@ export default function Home(){
   const [authMode,setAuthMode]=useState('login');
   const [authMessage,setAuthMessage]=useState('');
   const [authBusy,setAuthBusy]=useState(false);
+  const [authTermsAccepted,setAuthTermsAccepted]=useState(false);
+  const [authLegalModal,setAuthLegalModal]=useState(null);
   const [form,setForm]=useState({email:'',password:'',full_name:'',username:'',state:'',state_id:'',city:'',gender:''});
   const [states,setStates]=useState([]);
   const [cities,setCities]=useState([]);
@@ -925,7 +927,9 @@ export default function Home(){
   }
 
   async function handleAuth(e){
-    e.preventDefault(); setAuthBusy(true); setAuthMessage('');
+    e.preventDefault(); setAuthMessage('');
+    if(!authTermsAccepted){setAuthMessage('Marque a caixa confirmando que leu e concorda com os Termos de Uso e a Política de Privacidade.');return;}
+    setAuthBusy(true);
     if(authMode==='login'){
       const {error}=await supabase.auth.signInWithPassword({email:form.email.trim(),password:form.password});
       setAuthBusy(false); setAuthMessage(error?error.message:'Login realizado com sucesso.'); return;
@@ -1477,27 +1481,36 @@ export default function Home(){
   if(loading&&session)return <div className="screenCenter"><div className="loader"></div><p>Carregando CIDARANK...</p></div>;
 
   if(!session){
-    return <main className="authPage">
-      <section className="authShowcase cidarankShowcase" aria-label="CIDARANK - rankings e destaques da cidade">
-        <img src="/cidarank-auth-showcase.png" alt="CIDARANK com ranking da semana, ranking do mês, ranking anual e destaque de estabelecimentos" className="cidarankShowcaseImage"/>
+    return <main className="authPage authPageV621">
+      <section className="authShowcase authShowcaseV621" aria-label="Bem-vindo ao CIDARANK">
+        <picture className="authHeroPicture">
+          <source media="(max-width: 760px)" srcSet="/cidarank-login-hero-mobile.png"/>
+          <img src="/cidarank-login-hero-desktop.png" alt="Bem-vindo ao CIDARANK — Sua cidade, sua gente, seu destaque" className="authHeroImage"/>
+        </picture>
       </section>
-      <section className="authPanel"><div className="authCard">
-        <div className="authTabs"><button className={authMode==='login'?'active':''} onClick={()=>{setAuthMode('login');setAuthMessage('')}}>ENTRAR</button><button className={authMode==='signup'?'active':''} onClick={()=>{setAuthMode('signup');setAuthMessage('')}}>CRIAR CONTA</button></div>
-        <h2>{authMode==='login'?'Bem-vindo ao CIDARANK':'Faça parte do CIDARANK'}</h2><p className="authSubtitle">{authMode==='login'?'Acesse sua conta e continue de onde parou.':'Crie seu perfil local em poucos passos.'}</p>
+      <section className="authPanel authPanelV621"><div className="authCard authCardV621">
+        <div className="authBrandMini"><span className="authBrandMiniMark">◆</span><div><b>CIDA<span>RANK</span></b><small>CIDADES QUE CONECTAM</small></div></div>
+        <div className="authWelcome"><span>Bem-vindo ao</span><strong>CIDARANK</strong></div>
+        <p className="authSubtitle">{authMode==='login'?'Acesse sua conta e continue de onde parou.':'Crie seu perfil e conecte-se à sua cidade.'}</p>
+        <div className="authTabs"><button type="button" className={authMode==='login'?'active':''} onClick={()=>{setAuthMode('login');setAuthMessage('');setAuthTermsAccepted(false)}}>ENTRAR</button><button type="button" className={authMode==='signup'?'active':''} onClick={()=>{setAuthMode('signup');setAuthMessage('');setAuthTermsAccepted(false)}}>CRIAR CONTA</button></div>
         <form onSubmit={handleAuth}>
           {authMode==='signup'&&<>
             <label>Nome completo<input required value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} placeholder="Seu nome"/></label>
             <label>@Usuário<input required value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="seuusuario"/></label>
-            <div className="authGrid locationGrid"><label>Estado<select required value={form.state_id} onFocus={loadPublicExpansionData} onChange={handleStateChange}><option value="">Selecione</option>{activeSignupStates.map(x=><option key={x.id} value={x.id}>{x.nome} ({x.sigla})</option>)}</select></label><label>Cidade<select required disabled={!form.state_id||locationsBusy} value={form.city} onChange={e=>setForm({...form,city:e.target.value})}><option value="">{locationsBusy?'Carregando...':'Selecione'}</option>{cities.map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></label></div><div className="signupExpansionNote">🌎 Cadastro liberado somente nas cidades ativas pelo CIDARANK. Novas cidades aparecem aqui automaticamente quando forem abertas.</div>
+            <div className="authGrid locationGrid"><label>Estado<select required value={form.state_id} onFocus={loadPublicExpansionData} onChange={handleStateChange}><option value="">Selecione</option>{activeSignupStates.map(x=><option key={x.id} value={x.id}>{x.nome} ({x.sigla})</option>)}</select></label><label>Cidade<select required disabled={!form.state_id||locationsBusy} value={form.city} onChange={e=>setForm({...form,city:e.target.value})}><option value="">{locationsBusy?'Carregando...':'Selecione'}</option>{cities.map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></label></div>
+            <div className="signupExpansionNote">🌎 O cadastro mostra somente estados e cidades liberados pelo CIDARANK.</div>
             <label>Gênero<select required value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}><option value="">Selecione</option><option value="homem">Homem</option><option value="mulher">Mulher</option><option value="outros">Outros</option></select></label>
             {locationsError&&<div className="authMessage authError">{locationsError}</div>}
           </>}
-          <label>E-mail<input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="voce@email.com"/></label>
-          <label>Senha<input type="password" minLength={6} required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Mínimo 6 caracteres"/></label>
+          <label>E-mail<input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="seuemail@exemplo.com"/></label>
+          <label>Senha<input type="password" minLength={6} required value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Sua senha"/></label>
+          <label className="authTermsRow"><input type="checkbox" checked={authTermsAccepted} onChange={e=>setAuthTermsAccepted(e.target.checked)}/><span>Li e concordo com os <button type="button" onClick={()=>setAuthLegalModal('terms')}>Termos de Uso</button> e a <button type="button" onClick={()=>setAuthLegalModal('privacy')}>Política de Privacidade</button>.</span></label>
           {authMessage&&<div className="authMessage">{authMessage}</div>}
-          <button className="authSubmit" disabled={authBusy}>{authBusy?'AGUARDE...':authMode==='login'?'ENTRAR NO CIDARANK':'CRIAR MINHA CONTA'}</button>
+          <button className="authSubmit" disabled={authBusy||!authTermsAccepted}>{authBusy?'AGUARDE...':authMode==='login'?'ENTRAR NO CIDARANK':'CRIAR MINHA CONTA'}</button>
         </form>
+        <div className="authTrust"><span>🛡️ Seguro e confiável</span><span>👥 Conecte-se com sua cidade</span><span>🏆 Mostre seu destaque</span></div>
       </div></section>
+      {authLegalModal&&<div className="authLegalOverlay" role="dialog" aria-modal="true"><div className="authLegalCard"><button className="authLegalClose" onClick={()=>setAuthLegalModal(null)}>×</button>{authLegalModal==='terms'?<><h2>Termos de Uso do CIDARANK</h2><p>Ao usar o CIDARANK, você concorda em utilizar a plataforma de forma responsável, respeitar outros usuários, não publicar conteúdo ilegal, ofensivo, fraudulento ou que viole direitos de terceiros e seguir as regras de cada recurso da plataforma.</p><p>Rankings, avaliações, publicações, mensagens e perfis podem ser moderados quando houver denúncia, abuso ou descumprimento das regras. Recursos podem ser atualizados para melhorar segurança e funcionamento.</p></>:<><h2>Política de Privacidade</h2><p>O CIDARANK utiliza os dados necessários para criar sua conta, identificar sua cidade, exibir seu perfil, permitir interações e manter a segurança da plataforma.</p><p>Dados públicos do perfil podem aparecer para outros usuários conforme os recursos do CIDARANK. Senhas são gerenciadas pelo sistema de autenticação e não devem ser compartilhadas com terceiros.</p></>}<button className="authLegalOk" onClick={()=>setAuthLegalModal(null)}>ENTENDI</button></div></div>}
     </main>
   }
 

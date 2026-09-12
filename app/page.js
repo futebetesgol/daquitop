@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const MENU = [
-  ['⌂','Início'],['🏆','Ranking da Cidade'],['▰','Estabelecimentos'],['⌖','Explorar Cidade'],['🔎','Buscar Pessoas'],['🏪','Buscar Estabelecimentos'],['📣','Feed CIDARANK'],['✈','Mensagens'],['●','Perfil'],['📜','Regras do CIDARANK'],['⚙','Configurações'],['?','Suporte']
+  ['⌂','Início'],['🏆','Ranking da Cidade'],['📊','Tabela de Classificação'],['▰','Estabelecimentos'],['⌖','Explorar Cidade'],['🔎','Buscar Pessoas'],['🏪','Buscar Estabelecimentos'],['📣','Feed CIDARANK'],['✈','Mensagens'],['●','Perfil'],['📜','Regras do CIDARANK'],['⚙','Configurações'],['?','Suporte']
 ];
 
 const OWNER_EMAIL = 'cidarankk@gmail.com';
@@ -109,6 +109,7 @@ export default function Home(){
   const [people,setPeople]=useState([]);
   const [following,setFollowing]=useState(new Set());
   const [selectedProfile,setSelectedProfile]=useState(null);
+  const [profileReturnTarget,setProfileReturnTarget]=useState('Início');
   const [profilePosts,setProfilePosts]=useState([]);
   const [profilePostAuthors,setProfilePostAuthors]=useState({});
   const [followModal,setFollowModal]=useState(null);
@@ -1091,6 +1092,7 @@ export default function Home(){
   }
 
   async function openProfile(personOrId){
+    setProfileReturnTarget(active||'Início');
     const id=typeof personOrId==='string'?personOrId:personOrId.id;
     const {data}=await supabase.from('profiles').select('*').eq('id',id).maybeSingle();
     const target=data||profile; setSelectedProfile(target); await Promise.all([loadProfileAwards(target),loadProfilePosts(target)]); setActive('Perfil');
@@ -1586,6 +1588,33 @@ export default function Home(){
     </>
   }
 
+  function ClassificationTableScreen(){
+    const view=['week','month','year'].includes(popularView)?popularView:'week';
+    const rank=competitionRanking(view);
+    const myPos=rank.findIndex(p=>p.id===session.user.id);
+    const status=rankStatus(view);
+    const labels={week:['Semanal','🗳️','voto(s)'],month:['Mensal','🏆','pontos'],year:['Anual','👑','pontos']};
+    const [label,icon,unit]=labels[view];
+    const metric=p=>view==='week'?`${p?.votes||0} ${unit}`:`${p?.points||0} ${unit}`;
+    return <>
+      <PageHeader title="Tabela de Classificação" subtitle={`Classificação automática em tempo real de ${cityLabel}.`}/>
+      <section className="panel classificationHub">
+        <div className="classificationTabs">
+          {['week','month','year'].map(k=><button key={k} className={view===k?'active':''} onClick={()=>setPopularView(k)}>{labels[k][1]} {labels[k][0]}</button>)}
+          <button className="locked" disabled>🗺️ Estado <small>EM BREVE</small></button>
+          <button className="locked" disabled>🇧🇷 Brasil <small>EM BREVE</small></button>
+        </div>
+        <div className="classificationLiveHead"><div><span>● AO VIVO</span><h2>{icon} Classificação {label}</h2><p>Atualização automática conforme votos e pontos válidos.</p></div><div className="classificationClock"><small>ENCERRA EM</small><b>{periodEndLabel(view)}</b><em>Faltam {status.countdown}</em></div></div>
+        <div className="classificationTable">
+          <div className="classificationHeader"><b>POS.</b><b>PESSOA</b><b>VOTOS / PONTOS</b></div>
+          {rank.map((person,i)=><button key={person.id} className={`classificationRow ${person.id===session.user.id?'mine':''}`} onClick={()=>openProfile(person)}><strong>{i===0?'🥇 1º':i===1?'🥈 2º':i===2?'🥉 3º':`#${i+1}`}</strong><span className="classificationIdentity"><Avatar profile={person} size="sm"/><span><b>{person.full_name||person.username}</b><small>@{person.username}</small></span></span><em>{metric(person)}</em></button>)}
+          {!rank.length&&<div className="classificationEmpty">Ainda não há classificados neste período. A tabela será preenchida automaticamente.</div>}
+        </div>
+        <div className="classificationMyPosition"><div><span>📍 SUA POSIÇÃO AGORA</span><b>{myPos>=0?`#${myPos+1}`:'—'}</b></div><div>{myPos>=0?<><strong>{metric(rank[myPos])}</strong><small>{myPos>0?`Acompanhe a diferença para o #${myPos}.`:'Você está liderando esta classificação.'}</small></>:<><strong>Ainda não classificado</strong><small>Quando você receber votos ou pontos válidos, sua posição aparece aqui automaticamente.</small></>}</div></div>
+      </section>
+    </>
+  }
+
   function BusinessScreen(){
     const ratingStars=value=>{
       const n=Math.max(0,Math.min(5,Math.round(Number(value||0))));
@@ -1659,7 +1688,7 @@ export default function Home(){
     ];
     const classifiedRanks=rankCards.filter(x=>x.pos); const bestRank=classifiedRanks.length?[...classifiedRanks].sort((a,b)=>a.pos-b.pos)[0]:null;
     return <>
-      <button className="backBtn" onClick={()=>{setSelectedProfile(profile);setActive(exploreCity?'Explorar Cidade':'Início')}}>← Voltar</button>
+      <button className="backBtn" onClick={()=>{setSelectedProfile(profile);setActive(profileReturnTarget||'Início')}}>← Voltar</button>
       <section className="profileHero">
         <div className="profileCover">{p?.cover_url?<img src={p.cover_url} alt={`Capa de ${p?.full_name||p?.username||'perfil'}`}/>:<div className="profileCoverEmpty"/>}</div>
         <div className="profileMain profileMainNoOverlap"><div className="profileAvatarFrame"><Avatar profile={p} name={p?.full_name} size="xxl"/></div><div className="grow"><div className="profileNameLine"><h1>{p?.full_name||p?.username}</h1><Seal type={sealTypeFor(p)} color={p.seal_color}/>{ownerProfile&&<span className="ownerTextTag big">Dono</span>}</div><p>@{p?.username||'usuario'} {!ownerProfile&&<>• 📍 {p?.city} - {p?.state}</>}</p>{p?.activity&&<span className="chip">{p.activity}</span>}</div><div className="profileActions">{own?<button className="primaryBtn" onClick={()=>setActive('Configurações')}>Editar perfil</button>:<>{canFollow&&<button className="primaryBtn" onClick={()=>toggleFollow(p)}>{following.has(p.id)?'Deixar de seguir':'Seguir'}</button>}<button className="secondaryBtn" onClick={()=>openChat(p)}>Mensagem</button></>}</div></div>
@@ -1849,6 +1878,7 @@ export default function Home(){
   function renderScreen(){
     switch(active){
       case 'Ranking da Cidade': return RankingCityScreen();
+      case 'Tabela de Classificação': return ClassificationTableScreen();
       case 'Estabelecimentos': return BusinessScreen();
       case 'Buscar Pessoas': return DirectoryScreen({kind:'people'});
       case 'Buscar Estabelecimentos': return DirectoryScreen({kind:'business'});
